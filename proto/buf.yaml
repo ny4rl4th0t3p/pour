@@ -1,0 +1,15 @@
+version: v2
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/cosmos/gogo-proto
+  - buf.build/cosmos/cosmos-proto
+lint:
+  use:
+    - STANDARD
+  except:
+    - PACKAGE_VERSION_SUFFIX    # vendored protos don't follow buf versioning conventions
+    - SERVICE_SUFFIX            # Cosmos SDK uses "Query"/"Msg" not "QueryService"/"MsgService"
+    - RPC_REQUEST_STANDARD_NAME # Cosmos SDK uses "MsgSend" not "SendRequest"/"MsgSendRequest"
+breaking:
+  use:
+    - FILE
