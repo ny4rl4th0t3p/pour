@@ -89,7 +89,18 @@ func trySimulate(ctx context.Context, txSvc txv1beta1.ServiceClient, chain Chain
 	if err != nil {
 		return Estimate{}, false, fmt.Errorf("tx: simulate marshal body: %w", err)
 	}
-	txBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(&txv1beta1.TxRaw{BodyBytes: bodyBytes})
+	// gas_limit=0 signals simulate mode: the chain uses an infinite gas meter.
+	// Without a non-nil Fee, cosmos-sdk's GetGas() nil-deferences AuthInfo.Fee.
+	authInfoBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(
+		&txv1beta1.AuthInfo{Fee: &txv1beta1.Fee{}},
+	)
+	if err != nil {
+		return Estimate{}, false, fmt.Errorf("tx: simulate marshal auth_info: %w", err)
+	}
+	txBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(&txv1beta1.TxRaw{
+		BodyBytes:     bodyBytes,
+		AuthInfoBytes: authInfoBytes,
+	})
 	if err != nil {
 		return Estimate{}, false, fmt.Errorf("tx: simulate marshal txraw: %w", err)
 	}
