@@ -1,0 +1,20 @@
+abuse:
+  ip_rate_limit:
+    requests_per_window: 100
+    window: 1h
+
+chains:
+  - chain_id: test-1
+    enabled: true
+    bech32_prefix: cosmos
+    slip44: 118
+    endpoints:
+      grpc:
+        - chain:9090
+    fee_tokens:
+      - denom: stake
+        average_gas_price: "0.025"
+        low_gas_price: "0.01"
+    drip:
+      anonymous: "1000000stake"
+      max_per_address_per_day: "100000000stake"

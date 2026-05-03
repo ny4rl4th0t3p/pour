@@ -1,0 +1,82 @@
+version: 2
+
+project_name: pour
+
+builds:
+  - id: pour
+    main: ./cmd/pour
+    binary: pour
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: pour
+    builds:
+      - pour
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^chore'
+      - '^ci'
+      - '^Merge (pull request|branch)'
+  groups:
+    - title: Features
+      regexp: '^feat'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^fix'
+      order: 1
+    - title: Performance
+      regexp: '^perf'
+      order: 2
+    - title: Refactors
+      regexp: '^refactor'
+      order: 3
+    - title: Documentation
+      regexp: '^docs'
+      order: 4
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: ny4rl4th0t3p
+    name: pour
+  header: |
+    ## pour {{ .Tag }}
+
+    A single-binary Cosmos faucet — no SDK dependency, raw protobuf over gRPC.
+
+    **Installation**
+
+    Download the binary for your platform below, or:
+
+    ```sh
+    go install github.com/ny4rl4th0t3p/pour/cmd/pour@{{ .Tag }}
+    ```
+
+    See the [README](https://github.com/ny4rl4th0t3p/pour#readme) for configuration and usage.
