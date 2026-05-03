@@ -5,9 +5,9 @@ import "gogoproto/gogo.proto";
 import "cosmos_proto/cosmos.proto";
 import "amino/amino.proto";
 
-option go_package                       = "github.com/cosmos/cosmos-sdk/types";
+option go_package = "github.com/cosmos/cosmos-sdk/types";
 option (gogoproto.goproto_stringer_all) = false;
-option (gogoproto.stringer_all)         = false;
+option (gogoproto.stringer_all) = false;
 
 // Coin defines a token with a denomination and an amount.
 //
@@ -16,11 +16,11 @@ option (gogoproto.stringer_all)         = false;
 message Coin {
   option (gogoproto.equal) = true;
 
-  string denom  = 1;
+  string denom = 1;
   string amount = 2 [
-    (cosmos_proto.scalar)  = "cosmos.Int",
+    (cosmos_proto.scalar) = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
-    (gogoproto.nullable)   = false,
+    (gogoproto.nullable) = false,
     (amino.dont_omitempty) = true
   ];
 }
@@ -32,11 +32,11 @@ message Coin {
 message DecCoin {
   option (gogoproto.equal) = true;
 
-  string denom  = 1;
+  string denom = 1;
   string amount = 2 [
-    (cosmos_proto.scalar)  = "cosmos.Dec",
+    (cosmos_proto.scalar) = "cosmos.Dec",
     (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
-    (gogoproto.nullable)   = false
+    (gogoproto.nullable) = false
   ];
 }
 
@@ -44,9 +44,9 @@ message DecCoin {
 // Deprecated: Prefer to use math.Int directly. It supports binary Marshal and Unmarshal.
 message IntProto {
   string int = 1 [
-    (cosmos_proto.scalar)  = "cosmos.Int",
+    (cosmos_proto.scalar) = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
-    (gogoproto.nullable)   = false
+    (gogoproto.nullable) = false
   ];
 }
 
@@ -54,8 +54,8 @@ message IntProto {
 // Deprecated: Prefer to use math.LegacyDec directly. It supports binary Marshal and Unmarshal.
 message DecProto {
   string dec = 1 [
-    (cosmos_proto.scalar)  = "cosmos.Dec",
+    (cosmos_proto.scalar) = "cosmos.Dec",
     (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
-    (gogoproto.nullable)   = false
+    (gogoproto.nullable) = false
   ];
 }

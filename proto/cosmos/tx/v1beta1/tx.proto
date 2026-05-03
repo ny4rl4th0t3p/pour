@@ -135,7 +135,7 @@ message TxBody {
   // and will act as a short-lived TTL in which the transaction is deemed valid
   // and kept in memory to prevent duplicates.
   google.protobuf.Timestamp timeout_timestamp = 5
-      [(gogoproto.nullable) = true, (gogoproto.stdtime) = true, (cosmos_proto.field_added_in) = "cosmos-sdk 0.53"];
+  [(gogoproto.nullable) = true, (gogoproto.stdtime) = true, (cosmos_proto.field_added_in) = "cosmos-sdk 0.53"];
 
   // extension_options are arbitrary options that can be added by chains
   // when the default options are not sufficient. If any of these are present
@@ -224,10 +224,10 @@ message ModeInfo {
 message Fee {
   // amount is the amount of coins to be paid as a fee
   repeated cosmos.base.v1beta1.Coin amount = 1 [
-    (gogoproto.nullable)     = false,
+    (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coins"
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coins"
   ];
 
   // gas_limit is the maximum gas that can be used in transaction processing
@@ -250,13 +250,13 @@ message Fee {
 // Tip is the tip used for meta-transactions.
 message Tip {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.46";
-  option deprecated                      = true;
+  option deprecated = true;
   // amount is the amount of the tip
   repeated cosmos.base.v1beta1.Coin amount = 1 [
-    (gogoproto.nullable)     = false,
+    (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coins"
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coins"
   ];
   // tipper is the address of the account paying for the tip
   string tipper = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];

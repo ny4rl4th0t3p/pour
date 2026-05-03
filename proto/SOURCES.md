@@ -18,10 +18,10 @@ with what is current, not because the version has a technical impact on our use 
 
 ## Vendored revisions
 
-| Source            | Revision | Commit                                   | Date       | Notes                             |
-|-------------------|----------|------------------------------------------|------------|-----------------------------------|
-| cosmos/cosmos-sdk | v0.54.2  | d15e81507416a66a1b6d65c5209dce414d360121 | 2026-05-02 |                                   |
-| cosmos/ibc-go     | v11.0.0  | 3e5f5e5bb153b6a126e67ccf45b565bf14d7ddd7 | 2026-05-02 |                                   |
+| Source            | Revision | Commit                                   | Date       | Notes                                    |
+|-------------------|----------|------------------------------------------|------------|------------------------------------------|
+| cosmos/cosmos-sdk | v0.54.2  | d15e81507416a66a1b6d65c5209dce414d360121 | 2026-05-02 |                                          |
+| cosmos/ibc-go     | v11.0.0  | 3e5f5e5bb153b6a126e67ccf45b565bf14d7ddd7 | 2026-05-02 |                                          |
 | evmos/ethermint   | v0.22.0  | c239fb335cf9647aafd0a43f6fd7e241328c55a6 | 2026-05-02 | Last release before archival; Apache-2.0 |
 
 ## Local modifications
