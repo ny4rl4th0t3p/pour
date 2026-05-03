@@ -9,7 +9,7 @@ import (
 
 func newTestCache(t *testing.T) *Cache {
 	t.Helper()
-	s, err := store.New(filepath.Join(t.TempDir(), "test.db"))
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}

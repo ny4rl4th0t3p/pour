@@ -21,13 +21,12 @@ type Store struct {
 }
 
 // New opens the SQLite database at path and runs any pending migrations.
-func New(path string) (*Store, error) {
+// ctx is used for all setup operations; cancel it to abort a migration in progress.
+func New(ctx context.Context, path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-
-	ctx := context.Background()
 
 	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
 		db.Close()
@@ -44,7 +43,7 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("store: create schema_migrations: %w", err)
 	}
 
-	if err := migrate(db); err != nil {
+	if err := migrate(ctx, db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -59,7 +58,7 @@ func (s *Store) DB() *sql.DB { return s.db }
 func (s *Store) Close() error { return s.db.Close() }
 
 // migrate applies any migration files not yet recorded in schema_migrations.
-func migrate(db *sql.DB) error {
+func migrate(ctx context.Context, db *sql.DB) error {
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("store: read migrations: %w", err)
@@ -73,10 +72,8 @@ func migrate(db *sql.DB) error {
 	}
 	sort.Strings(names)
 
-	ctx := context.Background()
-
 	for _, name := range names {
-		applied, err := isMigrationApplied(db, name)
+		applied, err := isMigrationApplied(ctx, db, name)
 		if err != nil {
 			return err
 		}
@@ -115,9 +112,9 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-func isMigrationApplied(db *sql.DB, name string) (bool, error) {
+func isMigrationApplied(ctx context.Context, db *sql.DB, name string) (bool, error) {
 	var count int
-	err := db.QueryRowContext(context.Background(),
+	err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM schema_migrations WHERE name = ?`, name,
 	).Scan(&count)
 	if err != nil {

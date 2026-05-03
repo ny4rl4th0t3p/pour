@@ -88,7 +88,7 @@ func TestRunDecay_alreadyAtFloor(t *testing.T) {
 }
 
 func TestStart_cancelsCleanly(t *testing.T) {
-	s, err := store.New(filepath.Join(t.TempDir(), "test.db"))
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}

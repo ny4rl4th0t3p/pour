@@ -15,7 +15,7 @@ var expectedTables = []string{
 }
 
 func TestNew_createsSchema(t *testing.T) {
-	s, err := New(filepath.Join(t.TempDir(), "test.db"))
+	s, err := New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestNew_createsSchema(t *testing.T) {
 }
 
 func TestNew_createsIndexes(t *testing.T) {
-	s, err := New(filepath.Join(t.TempDir(), "test.db"))
+	s, err := New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -57,20 +57,20 @@ func TestNew_createsIndexes(t *testing.T) {
 }
 
 func TestMigrate_idempotent(t *testing.T) {
-	s, err := New(filepath.Join(t.TempDir(), "test.db"))
+	s, err := New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("first New: %v", err)
 	}
 
 	// Running migrate again on the same db must be a no-op.
-	if err := migrate(s.db); err != nil {
+	if err := migrate(context.Background(), s.db); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
 	s.Close()
 }
 
 func TestMigrate_order(t *testing.T) {
-	s, err := New(filepath.Join(t.TempDir(), "test.db"))
+	s, err := New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
