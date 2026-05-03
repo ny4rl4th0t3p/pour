@@ -34,6 +34,7 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		w.Header().Set("X-Request-Id", chimw.GetReqID(r.Context()))
 		wrapped := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
 		slog.InfoContext(r.Context(), "http request",

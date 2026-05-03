@@ -16,6 +16,7 @@ import (
 	ourmw "github.com/ny4rl4th0t3p/pour/internal/http/middleware"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
+	"github.com/ny4rl4th0t3p/pour/internal/ui"
 )
 
 // Deps holds everything cmd/pour passes into the HTTP layer.
@@ -64,6 +65,10 @@ func New(deps Deps) *Server {
 	if deps.Serve.Metrics {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	}
+
+	uiH := ui.Handler()
+	r.Get("/", uiH.ServeHTTP)
+	r.Get("/altcha.min.js", uiH.ServeHTTP)
 
 	return &Server{router: r, addr: deps.Serve.Listen}
 }
