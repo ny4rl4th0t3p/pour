@@ -1,5 +1,7 @@
 package tx
 
+import "context"
+
 // Coin is a (denom, amount) pair. Amount is a decimal integer string, e.g. "1000000".
 type Coin struct {
 	Denom  string
@@ -41,7 +43,7 @@ func (c *CachedEstimate) IsTrusted() bool { return c.SampleCount >= 5 }
 // GasCache is the read interface for empirical gas estimates.
 // Implemented by internal/gascache in M5; pass nil to skip cache lookup.
 type GasCache interface {
-	Lookup(chainID string) (*CachedEstimate, bool)
+	Lookup(ctx context.Context, chainID string) (*CachedEstimate, bool)
 }
 
 // SendRequest is the input to Client.BuildAndBroadcast.

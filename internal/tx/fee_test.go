@@ -1,6 +1,7 @@
 package tx
 
 import (
+	"context"
 	"testing"
 
 	"google.golang.org/protobuf/types/known/anypb"
@@ -117,7 +118,7 @@ type stubCache struct {
 	estimate *CachedEstimate
 }
 
-func (s *stubCache) Lookup(_ string) (*CachedEstimate, bool) {
+func (s *stubCache) Lookup(_ context.Context, _ string) (*CachedEstimate, bool) {
 	if s.estimate == nil {
 		return nil, false
 	}

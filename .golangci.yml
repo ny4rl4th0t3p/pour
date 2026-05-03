@@ -100,6 +100,9 @@ linters:
         - '0.025'   # spec §2.14: static default gas price
         - '1.3'     # spec §2.14: trusted-cache gas adjustment
         - '1.5'     # spec §2.14: cold-start gas adjustment
+        - '0.9'     # spec §2.14.4: decay multiplier with registry floor
+        - '0.95'    # spec §2.14.4: decay multiplier without registry floor
+        - '20'      # EMA window cap for gas learning
       ignored-functions:
         - strings.SplitN
     govet:

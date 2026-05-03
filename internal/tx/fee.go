@@ -41,7 +41,7 @@ func estimateFee(
 ) (Estimate, error) {
 	// 1. Trusted cache.
 	if req.GasCache != nil {
-		if cached, ok := req.GasCache.Lookup(chain.ChainID); ok && cached.IsTrusted() {
+		if cached, ok := req.GasCache.Lookup(ctx, chain.ChainID); ok && cached.IsTrusted() {
 			baseGas := decimal.NewFromInt(int64(cached.BaseGas + cached.GasPerOutput*uint64(len(msgs))))
 			gas := baseGas.Mul(gasAdjustTrusted).Ceil().BigInt().Uint64()
 			fee, err := calcFee(gas, cached.GasPriceAmount, cached.FeeDenom)
