@@ -66,9 +66,11 @@ func New(deps Deps) *Server {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
 	}
 
-	uiH := ui.Handler()
-	r.Get("/", uiH.ServeHTTP)
-	r.Get("/altcha.min.js", uiH.ServeHTTP)
+	if !deps.Serve.NoUI {
+		uiH := ui.Handler()
+		r.Get("/", uiH.ServeHTTP)
+		r.Get("/altcha.min.js", uiH.ServeHTTP)
+	}
 
 	return &Server{router: r, addr: deps.Serve.Listen}
 }
