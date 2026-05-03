@@ -4,7 +4,6 @@ CREATE TABLE drips
     chain_id          TEXT    NOT NULL,
     address           TEXT    NOT NULL,
     coins             TEXT    NOT NULL,
-    tier              TEXT    NOT NULL,
     fallback_reason   TEXT,
     requester_ip      TEXT,
     api_key_id        TEXT,
@@ -18,4 +17,3 @@ CREATE TABLE drips
 
 CREATE INDEX idx_drips_address_chain ON drips (address, chain_id, requested_at);
 CREATE INDEX idx_drips_chain_status ON drips (chain_id, status);
-CREATE INDEX idx_drips_tier ON drips (tier, requested_at);

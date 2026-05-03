@@ -19,7 +19,6 @@ func TestRecordDrip(t *testing.T) {
 		ChainID:     "osmosis-1",
 		Address:     "osmo1abc123",
 		Coins:       "1000000uosmo",
-		Tier:        "anonymous_rate_limited",
 		RequesterIP: "1.2.3.4",
 		TxHash:      "AABBCCDD",
 		Status:      "confirmed",
@@ -38,9 +37,9 @@ func TestRecordDrip(t *testing.T) {
 	var got DripRecord
 	var gotID int64
 	err = s.db.QueryRowContext(context.Background(),
-		`SELECT id, chain_id, address, coins, tier, requester_ip, tx_hash, status, requested_at, completed_at
+		`SELECT id, chain_id, address, coins, requester_ip, tx_hash, status, requested_at, completed_at
 		 FROM drips WHERE id = ?`, id,
-	).Scan(&gotID, &got.ChainID, &got.Address, &got.Coins, &got.Tier,
+	).Scan(&gotID, &got.ChainID, &got.Address, &got.Coins,
 		&got.RequesterIP, &got.TxHash, &got.Status, &got.RequestedAt, &got.CompletedAt)
 	if err != nil {
 		t.Fatalf("query back: %v", err)

@@ -10,7 +10,6 @@ type PourRequest struct {
 type PourResponse struct {
 	DripID int64  `json:"drip_id"`
 	Status string `json:"status"` // "confirmed"
-	Tier   string `json:"tier"`
 	Amount string `json:"amount"` // e.g. "1000000uosmo"
 	TxHash string `json:"tx_hash"`
 }

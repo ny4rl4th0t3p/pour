@@ -11,7 +11,7 @@ LDFLAGS = -ldflags "\
   -X main.commit=$(COMMIT) \
   -X main.date=$(DATE)"
 
-.PHONY: build build-minimal build-no-ui test test-integration lint \
+.PHONY: build build-minimal build-no-ui test test-smoke lint \
         proto-gen proto-clean proto-lint embed-full embed-filtered release
 
 ## Build the binary with the full embedded registry (default).
@@ -30,9 +30,11 @@ build-no-ui:
 test:
 	go test -count=1 -race ./...
 
-## Run integration tests against a local devnet (requires a running chain).
-test-integration:
-	go test -count=1 -tags integration ./...
+## Run end-to-end smoke test against a Docker Compose devnet (requires Docker).
+test-smoke:
+	@docker compose -f tests/smoke/docker-compose.yml up \
+	    --build --abort-on-container-exit --exit-code-from smoke ; \
+	  STATUS=$$? ; docker compose -f tests/smoke/docker-compose.yml down -v ; exit $$STATUS
 
 ## Run golangci-lint.
 lint:

@@ -10,7 +10,6 @@ type DripRecord struct {
 	ChainID     string
 	Address     string
 	Coins       string // e.g. "1000000uosmo"
-	Tier        string // e.g. "anonymous_rate_limited"
 	RequesterIP string
 	TxHash      string
 	Status      string // "confirmed"
@@ -22,9 +21,9 @@ type DripRecord struct {
 func (s *Store) RecordDrip(ctx context.Context, d DripRecord) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO drips
-			(chain_id, address, coins, tier, requester_ip, tx_hash, status, requested_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, d.ChainID, d.Address, d.Coins, d.Tier, d.RequesterIP, d.TxHash, d.Status, d.RequestedAt, d.CompletedAt)
+			(chain_id, address, coins, requester_ip, tx_hash, status, requested_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, d.ChainID, d.Address, d.Coins, d.RequesterIP, d.TxHash, d.Status, d.RequestedAt, d.CompletedAt)
 	if err != nil {
 		return 0, fmt.Errorf("store: record drip: %w", err)
 	}

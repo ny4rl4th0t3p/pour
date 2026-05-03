@@ -84,7 +84,6 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		ChainID:     req.ChainID,
 		Address:     req.Address,
 		Coins:       amount,
-		Tier:        "anonymous_rate_limited",
 		RequesterIP: ip,
 		TxHash:      result.TxHash,
 		Status:      "confirmed",
@@ -100,7 +99,6 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pourapi.PourResponse{
 		DripID: dripID,
 		Status: "confirmed",
-		Tier:   "anonymous_rate_limited",
 		Amount: amount,
 		TxHash: result.TxHash,
 	})

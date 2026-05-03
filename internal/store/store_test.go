@@ -43,7 +43,6 @@ func TestNew_createsIndexes(t *testing.T) {
 		"idx_rate_limits_lookup",
 		"idx_drips_address_chain",
 		"idx_drips_chain_status",
-		"idx_drips_tier",
 	}
 	for _, idx := range indexes {
 		var name string
