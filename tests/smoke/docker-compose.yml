@@ -1,0 +1,43 @@
+name: pour-smoke
+
+services:
+  chain:
+    image: ghcr.io/cosmos/simapp:v0.54
+    command: ["/scripts/devnet-init.sh"]
+    volumes:
+      - ./scripts/devnet-init.sh:/scripts/devnet-init.sh:ro
+      - state:/state
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:1317/cosmos/bank/v1beta1/params > /dev/null"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+
+  faucet:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["serve"]
+    depends_on:
+      chain:
+        condition: service_healthy
+    environment:
+      POUR_MNEMONIC: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+      POUR_CONFIG: /etc/pour/chains.yml
+      POUR_LISTEN: ":8080"
+    volumes:
+      - ./chains.yml:/etc/pour/chains.yml:ro
+
+  smoke:
+    image: alpine/curl:latest
+    depends_on:
+      faucet:
+        condition: service_started
+    command: ["/bin/sh", "/scripts/smoke.sh"]
+    volumes:
+      - ./scripts/smoke.sh:/scripts/smoke.sh:ro
+      - state:/state:ro
+
+volumes:
+  state:
