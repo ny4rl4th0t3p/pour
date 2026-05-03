@@ -9,6 +9,15 @@ abuse:
 chains:
   - chain_id: osmosis-1
     enabled: true
+    bech32_prefix: osmo
+    slip44: 118
+    endpoints:
+      grpc:
+        - grpc.osmosis.zone:443
+    fee_tokens:
+      - denom: uosmo
+        average_gas_price: "0.025"
+        low_gas_price: "0.01"
     drip:
       anonymous: 1000000uosmo                 # REQUIRED
       max_per_address_per_day: 50000000uosmo  # REQUIRED
