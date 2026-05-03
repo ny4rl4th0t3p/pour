@@ -1,0 +1,14 @@
+## chains.yml — pour faucet configuration
+## Copy to chains.yml and edit. Set POUR_MNEMONIC in your environment.
+
+abuse:
+  ip_rate_limit:
+    requests_per_window: 10   # number of requests allowed per window
+    window: 1h          # duration window: 1h, 30m, 5m, etc. (default: 1h)
+
+chains:
+  - chain_id: osmosis-1
+    enabled: true
+    drip:
+      anonymous: 1000000uosmo                 # REQUIRED
+      max_per_address_per_day: 50000000uosmo  # REQUIRED

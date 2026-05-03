@@ -70,7 +70,6 @@ chains:
 | `POUR_DB_PATH`   | `pour.db`    | Path to the SQLite database.                        |
 | `POUR_LOG_LEVEL` | `info`       | Log level: `debug`, `info`, `warn`, `error`.        |
 | `POUR_METRICS`   | `false`      | Enable Prometheus metrics at `/metrics`.            |
-| `POUR_NO_UI`     | `false`      | Disable the embedded web UI.                        |
 
 ## HTTP API
 
