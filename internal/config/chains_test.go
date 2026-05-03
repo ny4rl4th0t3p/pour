@@ -11,7 +11,8 @@ import (
 const validYAML = `
 abuse:
   ip_rate_limit:
-    requests_per_hour: 10
+    requests_per_window: 10
+    window: 1h
 
 chains:
   - chain_id: osmosis-1
@@ -45,8 +46,11 @@ func TestLoadChains_valid(t *testing.T) {
 		t.Fatalf("LoadChains: %v", err)
 	}
 
-	if cfg.Abuse.IPRateLimit.RequestsPerHour != 10 {
-		t.Errorf("RequestsPerHour: got %d, want 10", cfg.Abuse.IPRateLimit.RequestsPerHour)
+	if cfg.Abuse.IPRateLimit.RequestsPerWindow != 10 {
+		t.Errorf("RequestsPerWindow: got %d, want 10", cfg.Abuse.IPRateLimit.RequestsPerWindow)
+	}
+	if cfg.Abuse.IPRateLimit.Window != "1h" {
+		t.Errorf("Window: got %q, want 1h", cfg.Abuse.IPRateLimit.Window)
 	}
 	if len(cfg.Chains) != 1 {
 		t.Fatalf("Chains len: got %d, want 1", len(cfg.Chains))

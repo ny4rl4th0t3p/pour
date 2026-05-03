@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -24,8 +25,26 @@ type AbuseConfig struct {
 }
 
 // IPRateLimitConfig holds per-IP rate limit settings.
+// Window is a Go duration string (e.g. "1h", "5m"); defaults to "1h" if unset.
 type IPRateLimitConfig struct {
-	RequestsPerHour int `koanf:"requests_per_hour"`
+	RequestsPerWindow int    `koanf:"requests_per_window"`
+	Window            string `koanf:"window"`
+}
+
+// WindowDuration parses Window and returns the configured duration.
+// Returns time.Hour when Window is empty (default).
+func (c IPRateLimitConfig) WindowDuration() (time.Duration, error) {
+	if c.Window == "" {
+		return time.Hour, nil
+	}
+	d, err := time.ParseDuration(c.Window)
+	if err != nil {
+		return 0, fmt.Errorf("config: abuse.ip_rate_limit.window %q: %w", c.Window, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("config: abuse.ip_rate_limit.window must be positive, got %q", c.Window)
+	}
+	return d, nil
 }
 
 // ChainConfig is the per-chain operator configuration.
@@ -71,6 +90,10 @@ func LoadChains(path string) (*ChainsConfig, error) {
 	var cfg ChainsConfig
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
+	}
+
+	if _, err := cfg.Abuse.IPRateLimit.WindowDuration(); err != nil {
+		return nil, err
 	}
 
 	for i := range cfg.Chains {
