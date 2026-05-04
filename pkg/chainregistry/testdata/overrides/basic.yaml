@@ -1,0 +1,6 @@
+chains:
+  test-alpha-1:
+    enabled: true
+    endpoints:
+      grpc:
+        - grpc.alpha-override.example:443

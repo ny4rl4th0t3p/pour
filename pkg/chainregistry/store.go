@@ -1,0 +1,239 @@
+package chainregistry
+
+import (
+	"fmt"
+	"log/slog"
+	"sort"
+	"sync"
+	"time"
+)
+
+// Options configures a new Store.
+type Options struct {
+	// Overrides is the parsed operator chains.yml. May be nil.
+	Overrides *OverrideSet
+
+	// Logger is optional; defaults to slog.Default().
+	Logger *slog.Logger
+}
+
+// Store is the package's main type. It holds the composed resolved view of all
+// configured chains and the source data needed to re-resolve after updates.
+//
+// Store is goroutine-safe. Get returns an immutable *ChainInfo pointer that
+// callers may cache across calls without synchronization.
+type Store struct {
+	chains         map[string]*ChainInfo // resolved view, keyed by chain ID
+	standaloneBase map[string]ChainInfo  // pre-override base for standalone chains
+	standalone     map[string]struct{}   // chain IDs that came from config, not registry
+	live           *Snapshot             // nil until first UpdateLive
+	overrides      *OverrideSet
+
+	// pending holds freeze-policy changes awaiting Accept, keyed by chainID+":"+field.
+	// Map ensures at most one pending entry per (chain, field).
+	pending map[string]*PendingChange
+
+	log *slog.Logger
+	mu  sync.RWMutex
+}
+
+// New creates an empty Store. Chains are populated via AddStandalone and UpdateLive.
+func New(opts Options) (*Store, error) {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	return &Store{
+		chains:         make(map[string]*ChainInfo),
+		standaloneBase: make(map[string]ChainInfo),
+		standalone:     make(map[string]struct{}),
+		overrides:      opts.Overrides,
+		pending:        make(map[string]*PendingChange),
+		log:            opts.Logger,
+	}, nil
+}
+
+// AddStandalone registers chains that are fully defined in operator config and
+// have no registry entry. Their resolved view is built from the supplied ChainInfo
+// values with current overrides applied on top. Standalone chains are never
+// overwritten by UpdateLive.
+func (s *Store) AddStandalone(infos ...ChainInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range infos {
+		s.standaloneBase[infos[i].ChainID] = infos[i]
+		s.standalone[infos[i].ChainID] = struct{}{}
+		s.chains[infos[i].ChainID] = s.resolveStandalone(infos[i])
+	}
+}
+
+// Get returns the resolved *ChainInfo for the given chain ID.
+// The returned pointer is immutable; callers may hold it across calls.
+// Returns ErrChainNotFound if the chain is not in the store.
+func (s *Store) Get(chainID string) (*ChainInfo, error) {
+	s.mu.RLock()
+	info := s.chains[chainID]
+	s.mu.RUnlock()
+	if info == nil {
+		return nil, ErrChainNotFound
+	}
+	return info, nil
+}
+
+// List returns all resolved chains, sorted by chain ID.
+func (s *Store) List() []*ChainInfo {
+	s.mu.RLock()
+	out := make([]*ChainInfo, 0, len(s.chains))
+	for _, info := range s.chains {
+		out = append(out, info)
+	}
+	s.mu.RUnlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].ChainID < out[j].ChainID })
+	return out
+}
+
+// IDs returns all known chain IDs, sorted.
+func (s *Store) IDs() []string {
+	s.mu.RLock()
+	ids := make([]string, 0, len(s.chains))
+	for id := range s.chains {
+		ids = append(ids, id)
+	}
+	s.mu.RUnlock()
+	sort.Strings(ids)
+	return ids
+}
+
+// UpdateLive incorporates a newly-fetched live snapshot into the resolved view.
+// Standalone chains are never touched. On the first call (store was empty), all
+// chains are populated directly with no policy applied. On subsequent calls,
+// HotReload and Warn fields are applied immediately; Freeze fields are enqueued
+// as PendingChange values and not applied until Accept is called.
+// Returns a ChangeSet summarizing what changed, partitioned by policy.
+func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	prevLive := s.live
+	s.live = snap
+	cs := &ChangeSet{}
+	now := time.Now()
+
+	for chainID := range snap.Chains {
+		if _, isStandalone := s.standalone[chainID]; isStandalone {
+			continue
+		}
+
+		newInfo, err := s.resolveUnsafe(chainID)
+		if err != nil || newInfo == nil {
+			continue
+		}
+
+		old, existed := s.chains[chainID]
+		if !existed || prevLive == nil {
+			// New chain or first populate: add without policy.
+			s.chains[chainID] = newInfo
+			continue
+		}
+
+		// Existing chain on a subsequent update: diff and apply policy.
+		for _, field := range classifiableFields {
+			ov, nv, changed := fieldValues(old, newInfo, field)
+			if !changed {
+				continue
+			}
+			fc := FieldChange{ChainID: chainID, Field: field, OldValue: ov, NewValue: nv}
+			switch classify(field) {
+			case FieldPolicyHotReload:
+				cs.HotReloaded = append(cs.HotReloaded, fc)
+			case FieldPolicyWarn:
+				cs.Warned = append(cs.Warned, fc)
+			case FieldPolicyFreeze:
+				cs.Frozen = append(cs.Frozen, fc)
+				key := chainID + ":" + field
+				s.pending[key] = &PendingChange{
+					ChainID: chainID, Field: field,
+					OldValue: ov, NewValue: nv,
+					DetectedAt: now, Source: SourceLive,
+				}
+				// Restore old value: Freeze means do not apply until accepted.
+				applyAcceptedField(newInfo, field, ov) //nolint:errcheck // only freeze fields passed, all handled
+			}
+		}
+
+		s.chains[chainID] = newInfo
+	}
+
+	return cs, nil
+}
+
+// Pending returns all freeze-policy changes awaiting operator acceptance.
+func (s *Store) Pending() []*PendingChange {
+	s.mu.RLock()
+	out := make([]*PendingChange, 0, len(s.pending))
+	for _, pc := range s.pending {
+		out = append(out, pc)
+	}
+	s.mu.RUnlock()
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ChainID != out[j].ChainID {
+			return out[i].ChainID < out[j].ChainID
+		}
+		return out[i].Field < out[j].Field
+	})
+	return out
+}
+
+// Accept applies a single pending freeze-policy change to the resolved view
+// and removes it from the pending queue.
+func (s *Store) Accept(chainID, field string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := chainID + ":" + field
+	pc, ok := s.pending[key]
+	if !ok {
+		return fmt.Errorf("%w: no pending change for chain %q field %q", ErrPendingChange, chainID, field)
+	}
+
+	info := s.chains[chainID]
+	if info == nil {
+		return fmt.Errorf("%w: chain %q not found", ErrChainNotFound, chainID)
+	}
+
+	updated := *info
+	if err := applyAcceptedField(&updated, field, pc.NewValue); err != nil {
+		return err
+	}
+	s.chains[chainID] = &updated
+	delete(s.pending, key)
+	return nil
+}
+
+// SetOverrides replaces the current override set and re-resolves all chains.
+// Called by the daemon on POST /admin/reload.
+func (s *Store) SetOverrides(ov *OverrideSet) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.overrides = ov
+	for chainID := range s.chains {
+		if _, isStandalone := s.standalone[chainID]; isStandalone {
+			s.chains[chainID] = s.resolveStandalone(s.standaloneBase[chainID])
+			continue
+		}
+		if info, _ := s.resolveUnsafe(chainID); info != nil {
+			s.chains[chainID] = info
+		}
+	}
+}
+
+// classifiableFields is the ordered list of field paths that UpdateLive diffs
+// when applying policy to live registry updates.
+var classifiableFields = []string{
+	"ChainID", "ChainName", "NetworkType", "PrettyName",
+	"Bech32Prefix", "Slip44", "KeyAlgo",
+	"Endpoints.GRPC", "Endpoints.RPC", "Endpoints.REST",
+	"BlockTime",
+	"FeeTokens.Denom",
+	"FeeTokens.LowGasPrice", "FeeTokens.AverageGasPrice", "FeeTokens.HighGasPrice",
+	"FeeTokens.Display", "FeeTokens.Exponent",
+}
