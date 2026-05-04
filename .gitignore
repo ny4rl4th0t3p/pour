@@ -26,10 +26,6 @@ go.work.sum
 # Proto-generated code (regenerate with: make proto-gen)
 /internal/tx/internal/proto/
 
-# Chain-registry snapshots (populated by: make embed-full / embed-filtered)
-/registry/full/
-/registry/filtered/
-
 # Runtime files
 .pour-admin-token
 *.db
