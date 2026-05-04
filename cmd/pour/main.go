@@ -90,20 +90,11 @@ func (c *ServeCmd) Run() error {
 		}
 	}()
 	for i := range chains.Chains {
-		chain := chains.Chains[i]
-		if !chain.Enabled {
+		chain := &chains.Chains[i]
+		if !chain.IsEnabled() {
 			continue
 		}
-		if len(chain.Endpoints.GRPC) == 0 {
-			return fmt.Errorf("chain %q: no gRPC endpoints configured", chain.ChainID)
-		}
-		client, err := tx.New(tx.ChainConfig{
-			ChainID:      chain.ChainID,
-			GRPCEndpoint: chain.Endpoints.GRPC[0],
-			Bech32Prefix: chain.Bech32Prefix,
-			Slip44:       chain.Slip44,
-			FeeTokens:    makeFeeTokens(chain.FeeTokens),
-		}, tx.Options{GasCache: gc})
+		client, err := tx.New(chain.ToChainInfo(), tx.Options{GasCache: gc})
 		if err != nil {
 			return fmt.Errorf("chain %q: tx client: %w", chain.ChainID, err)
 		}
@@ -158,30 +149,17 @@ func main() {
 }
 
 // lowGasPriceFn builds a gascache.LowGasPriceFn from the loaded config.
-// It uses the first fee token's low_gas_price for each chain.
 func lowGasPriceFn(cfg *config.ChainsConfig) gascache.LowGasPriceFn {
 	m := make(map[string]string, len(cfg.Chains))
 	for i := range cfg.Chains {
-		c := cfg.Chains[i]
-		if len(c.FeeTokens) > 0 {
-			m[c.ChainID] = c.FeeTokens[0].LowGasPrice
+		c := &cfg.Chains[i]
+		info := c.ToChainInfo()
+		if len(info.FeeTokens) > 0 && !info.FeeTokens[0].LowGasPrice.IsZero() {
+			m[c.ChainID] = info.FeeTokens[0].LowGasPrice.String()
 		}
 	}
 	return func(chainID string) (string, bool) {
 		v, ok := m[chainID]
 		return v, ok && v != ""
 	}
-}
-
-// makeFeeTokens converts config.FeeTokenConfig slice to tx.FeeToken slice.
-func makeFeeTokens(in []config.FeeTokenConfig) []tx.FeeToken {
-	out := make([]tx.FeeToken, len(in))
-	for i, ft := range in {
-		out[i] = tx.FeeToken{
-			Denom:           ft.Denom,
-			AverageGasPrice: ft.AverageGasPrice,
-			LowGasPrice:     ft.LowGasPrice,
-		}
-	}
-	return out
 }
