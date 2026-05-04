@@ -13,6 +13,7 @@ import (
 	"github.com/cosmos/go-bip39"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/admin"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
@@ -108,6 +109,17 @@ func (c *ServeCmd) Run() error {
 		broadcasters[ch.Info().ChainID] = ch.Client()
 	}
 
+	tokenStore, err := admin.NewTokenStore()
+	if err != nil {
+		return err
+	}
+	adminHandler := admin.New(admin.Deps{
+		RegStore:   mgr.Store(),
+		Manager:    mgr,
+		ConfigPath: c.ConfigFile,
+	})
+	adminRouter := admin.Middleware(tokenStore, chains.Admin.AllowedCIDRs)(adminHandler.Router())
+
 	srv, err := pourhttp.New(pourhttp.Deps{
 		ChainsConfig: chains,
 		Serve:        &c.ServeConfig,
@@ -115,6 +127,7 @@ func (c *ServeCmd) Run() error {
 		Limiter:      limiter,
 		Broadcasters: broadcasters,
 		GasCache:     gc,
+		AdminHandler: adminRouter,
 		Mnemonic:     mnemonic,
 		Version:      version,
 	})

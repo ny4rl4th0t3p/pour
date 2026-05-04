@@ -131,6 +131,48 @@ func (m *Manager) ListActive() []*Chain {
 	return out
 }
 
+// Store returns the underlying registry store.
+func (m *Manager) Store() *chainregistry.Store {
+	return m.regStore
+}
+
+// Refresh fetches live registry data, applies it to the store, and reconciles
+// active connections. Returns the ChangeSet summarizing what changed.
+// No-op (empty ChangeSet) when there are no registry chains.
+func (m *Manager) Refresh(ctx context.Context) (*chainregistry.ChangeSet, error) {
+	if len(m.registryIDs) == 0 {
+		return &chainregistry.ChangeSet{}, nil
+	}
+	snap, err := chainregistry.FetchLive(ctx, chainregistry.FetchOptions{
+		BaseURL:  m.registryBaseURL,
+		ChainIDs: m.registryIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("chain: refresh: %w", err)
+	}
+	cs, err := m.regStore.UpdateLive(snap)
+	if err != nil {
+		return nil, fmt.Errorf("chain: refresh update: %w", err)
+	}
+	return cs, m.reconcile()
+}
+
+// Reload applies a new config without restarting: rebuilds the drip map, updates
+// registry overrides, and reconciles active connections. Newly added registry chains
+// that were not in the initial fetch are not picked up — a restart is required for those.
+func (m *Manager) Reload(cfg *config.ChainsConfig) error {
+	ov, err := cfg.ToOverrideSet()
+	if err != nil {
+		return err
+	}
+	newDrips := buildDripMap(cfg)
+	m.mu.Lock()
+	m.drips = newDrips
+	m.mu.Unlock()
+	m.regStore.SetOverrides(ov)
+	return m.reconcile()
+}
+
 // StartRefreshLoop launches a background goroutine that periodically re-fetches
 // registry data. It stops when ctx is canceled. No-op if there are no registry chains.
 func (m *Manager) StartRefreshLoop(ctx context.Context) {
