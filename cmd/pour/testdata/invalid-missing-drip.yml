@@ -1,0 +1,3 @@
+chains:
+  - chain_id: osmosis-1
+    enabled: true

@@ -1,0 +1,13 @@
+chains:
+  - chain_id: mychain-1
+    standalone: true
+    enabled: true
+    slip44: 118
+    endpoints:
+      grpc:
+        - localhost:9090
+    fee_tokens:
+      - denom: umychain
+    drip:
+      anonymous: 1000000umychain
+      max_per_address_per_day: 10000000umychain
