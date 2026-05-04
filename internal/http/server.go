@@ -11,26 +11,27 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/http/handlers"
 	ourmw "github.com/ny4rl4th0t3p/pour/internal/http/middleware"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/internal/ui"
-	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
 // Deps holds everything cmd/pour passes into the HTTP layer.
 type Deps struct {
-	ChainsConfig *config.ChainsConfig
-	Serve        *config.ServeConfig
-	Store        *store.Store
-	Limiter      handlers.RateLimiter
-	Broadcasters map[string]handlers.Broadcaster // chain_id → tx.Client
-	GasCache     tx.GasCache                     // optional; may be nil
-	AdminHandler nethttp.Handler                 // optional; mounted at /admin when non-nil
-	Mnemonic     string
-	Version      string
+	Manager         *chain.Manager
+	RefreshInterval time.Duration
+	Serve           *config.ServeConfig
+	Store           *store.Store
+	Limiter         handlers.RateLimiter
+	Broadcasters    map[string]handlers.Broadcaster // chain_id → tx.Client
+	GasCache        tx.GasCache                     // optional; may be nil
+	AdminHandler    nethttp.Handler                 // optional; mounted at /admin when non-nil
+	Mnemonic        string
+	Version         string
 }
 
 // Server owns the chi router and listen address.
@@ -41,19 +42,20 @@ type Server struct {
 
 // New builds the chi router with all middleware and routes wired up.
 func New(deps Deps) (*Server, error) {
-	chains, err := enabledChains(deps.ChainsConfig)
-	if err != nil {
-		return nil, err
+	refreshMode := "manual"
+	if deps.RefreshInterval > 0 {
+		refreshMode = "live"
 	}
 
 	h := handlers.New(handlers.Deps{
-		Chains:       chains,
-		Broadcasters: deps.Broadcasters,
-		Limiter:      deps.Limiter,
-		DripStore:    deps.Store,
-		GasCache:     deps.GasCache,
-		Mnemonic:     deps.Mnemonic,
-		Version:      deps.Version,
+		Source:              deps.Manager,
+		RegistryRefreshMode: refreshMode,
+		Broadcasters:        deps.Broadcasters,
+		Limiter:             deps.Limiter,
+		DripStore:           deps.Store,
+		GasCache:            deps.GasCache,
+		Mnemonic:            deps.Mnemonic,
+		Version:             deps.Version,
 	})
 
 	r := chi.NewRouter()
@@ -65,6 +67,7 @@ func New(deps Deps) (*Server, error) {
 	r.Post("/v1/pour", h.Pour)
 	r.Get("/v1/info", h.Info)
 	r.Get("/v1/chains", h.Chains)
+	r.Get("/v1/chains/{chain_id}", h.ChainDetail)
 	r.Get("/health", h.Health)
 
 	if deps.AdminHandler != nil {
@@ -112,29 +115,4 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		return nil
 	}
-}
-
-// enabledChains builds a ChainEntry map for all enabled chains from config.
-func enabledChains(cfg *config.ChainsConfig) (map[string]handlers.ChainEntry, error) {
-	out := make(map[string]handlers.ChainEntry, len(cfg.Chains))
-	for i := range cfg.Chains {
-		c := &cfg.Chains[i]
-		if !c.IsEnabled() {
-			continue
-		}
-		info, err := c.ToChainInfo()
-		if err != nil {
-			return nil, err
-		}
-		out[c.ChainID] = handlers.ChainEntry{
-			Info: info,
-			Drip: chainregistry.DripPolicy{
-				Anonymous:           c.Drip.Anonymous,
-				Signed:              c.Drip.Signed,
-				MaxPerAddressPerDay: c.Drip.MaxPerAddressPerDay,
-				Memo:                c.Drip.Memo,
-			},
-		}
-	}
-	return out, nil
 }

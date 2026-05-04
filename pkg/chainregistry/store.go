@@ -59,10 +59,13 @@ func New(opts Options) (*Store, error) {
 func (s *Store) AddStandalone(infos ...ChainInfo) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := time.Now()
 	for i := range infos {
 		s.standaloneBase[infos[i].ChainID] = infos[i]
 		s.standalone[infos[i].ChainID] = struct{}{}
-		s.chains[infos[i].ChainID] = s.resolveStandalone(infos[i])
+		resolved := s.resolveStandalone(infos[i])
+		resolved.LastChanged = now
+		s.chains[infos[i].ChainID] = resolved
 	}
 }
 
@@ -131,16 +134,19 @@ func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
 		old, existed := s.chains[chainID]
 		if !existed || prevLive == nil {
 			// New chain or first populate: add without policy.
+			newInfo.LastChanged = now
 			s.chains[chainID] = newInfo
 			continue
 		}
 
 		// Existing chain on a subsequent update: diff and apply policy.
+		hasChanged := false
 		for _, field := range classifiableFields {
 			ov, nv, changed := fieldValues(old, newInfo, field)
 			if !changed {
 				continue
 			}
+			hasChanged = true
 			fc := FieldChange{ChainID: chainID, Field: field, OldValue: ov, NewValue: nv}
 			switch classify(field) {
 			case FieldPolicyHotReload:
@@ -160,7 +166,29 @@ func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
 			}
 		}
 
+		if hasChanged {
+			newInfo.LastChanged = now
+		} else {
+			newInfo.LastChanged = old.LastChanged
+		}
 		s.chains[chainID] = newInfo
+	}
+
+	// Disable registry chains that disappeared from the new snapshot.
+	for chainID, info := range s.chains {
+		if _, isStandalone := s.standalone[chainID]; isStandalone {
+			continue
+		}
+		if _, inSnapshot := snap.Chains[chainID]; inSnapshot {
+			continue
+		}
+		if info.Enabled {
+			disabled := *info
+			disabled.Enabled = false
+			s.chains[chainID] = &disabled
+			cs.Removed = append(cs.Removed, chainID)
+			s.log.Warn("chain disappeared from registry, disabling", "chain_id", chainID)
+		}
 	}
 
 	return cs, nil
@@ -215,14 +243,31 @@ func (s *Store) SetOverrides(ov *OverrideSet) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.overrides = ov
+	now := time.Now()
 	for chainID := range s.chains {
+		old := s.chains[chainID]
+		var newInfo *ChainInfo
 		if _, isStandalone := s.standalone[chainID]; isStandalone {
-			s.chains[chainID] = s.resolveStandalone(s.standaloneBase[chainID])
+			newInfo = s.resolveStandalone(s.standaloneBase[chainID])
+		} else {
+			newInfo, _ = s.resolveUnsafe(chainID)
+		}
+		if newInfo == nil {
 			continue
 		}
-		if info, _ := s.resolveUnsafe(chainID); info != nil {
-			s.chains[chainID] = info
+		changed := false
+		for _, field := range classifiableFields {
+			if _, _, c := fieldValues(old, newInfo, field); c {
+				changed = true
+				break
+			}
 		}
+		if changed {
+			newInfo.LastChanged = now
+		} else {
+			newInfo.LastChanged = old.LastChanged
+		}
+		s.chains[chainID] = newInfo
 	}
 }
 

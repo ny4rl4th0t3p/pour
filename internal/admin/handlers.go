@@ -123,6 +123,7 @@ type refreshResponse struct {
 	HotReloaded int `json:"hot_reloaded"`
 	Warned      int `json:"warned"`
 	Frozen      int `json:"frozen"`
+	Removed     int `json:"removed"`
 }
 
 // Refresh handles POST /admin/registry/refresh.
@@ -137,6 +138,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		HotReloaded: len(cs.HotReloaded),
 		Warned:      len(cs.Warned),
 		Frozen:      len(cs.Frozen),
+		Removed:     len(cs.Removed),
 	})
 }
 

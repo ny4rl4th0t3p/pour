@@ -16,9 +16,10 @@ type PourResponse struct {
 
 // InfoResponse is returned by GET /v1/info.
 type InfoResponse struct {
-	Version          string    `json:"version"`
-	RegistryRevision string    `json:"registry_revision"`
-	Abuse            AbuseInfo `json:"abuse"`
+	Version             string    `json:"version"`
+	RegistryLastFetched string    `json:"registry_last_fetched"`
+	RegistryRefreshMode string    `json:"registry_refresh_mode"`
+	Abuse               AbuseInfo `json:"abuse"`
 }
 
 // AbuseInfo describes which abuse-prevention mechanisms are active.
@@ -38,6 +39,16 @@ type ChainInfo struct {
 // ChainsResponse is returned by GET /v1/chains.
 type ChainsResponse struct {
 	Chains []ChainInfo `json:"chains"`
+}
+
+// ChainDetailResponse is returned by GET /v1/chains/{chain_id}.
+type ChainDetailResponse struct {
+	ChainID      string `json:"chain_id"`
+	ChainName    string `json:"chain_name"`
+	Bech32Prefix string `json:"bech32_prefix"`
+	Slip44       uint32 `json:"slip44"`
+	DripAmount   string `json:"drip_amount"`
+	LastChanged  string `json:"last_changed"` // RFC3339; empty if never updated
 }
 
 // HealthResponse is returned by GET /health.

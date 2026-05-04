@@ -7,11 +7,12 @@ type ChangeSet struct {
 	HotReloaded []FieldChange
 	Warned      []FieldChange
 	Frozen      []FieldChange
+	Removed     []string // chain IDs that disappeared from the registry and were disabled
 }
 
 // Empty reports whether the ChangeSet contains no changes.
 func (cs *ChangeSet) Empty() bool {
-	return len(cs.HotReloaded) == 0 && len(cs.Warned) == 0 && len(cs.Frozen) == 0
+	return len(cs.HotReloaded) == 0 && len(cs.Warned) == 0 && len(cs.Frozen) == 0 && len(cs.Removed) == 0
 }
 
 // FieldChange records one field that changed between the previous resolved view

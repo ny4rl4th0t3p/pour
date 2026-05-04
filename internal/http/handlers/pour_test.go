@@ -11,11 +11,14 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
+
+var testLastChanged = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // ----- test doubles -----
 
@@ -38,19 +41,41 @@ func (m *mockDripStore) RecordDrip(_ context.Context, _ store.DripRecord) (int64
 	return m.id, nil
 }
 
+// stubChainSource implements chain.ChainSource for handler tests.
+type stubChainSource struct {
+	snaps map[string]chain.ChainSnapshot
+}
+
+func (s *stubChainSource) GetActive(chainID string) (chain.ChainSnapshot, bool) {
+	snap, ok := s.snaps[chainID]
+	return snap, ok
+}
+
+func (s *stubChainSource) ListActive() []chain.ChainSnapshot {
+	out := make([]chain.ChainSnapshot, 0, len(s.snaps))
+	for _, snap := range s.snaps {
+		out = append(out, snap)
+	}
+	return out
+}
+
+func (*stubChainSource) LastFetched() time.Time { return time.Time{} }
+
 // ----- helpers -----
 
-var testChains = map[string]ChainEntry{
-	"osmosis-1": {
-		Info: &chainregistry.ChainInfo{ChainID: "osmosis-1", Bech32Prefix: "osmo", Slip44: 118},
-		Drip: chainregistry.DripPolicy{Anonymous: "1000000uosmo"},
+var testSource = &stubChainSource{
+	snaps: map[string]chain.ChainSnapshot{
+		"osmosis-1": {
+			Info: &chainregistry.ChainInfo{ChainID: "osmosis-1", Bech32Prefix: "osmo", Slip44: 118, LastChanged: testLastChanged},
+			Drip: chainregistry.DripPolicy{Anonymous: "1000000uosmo"},
+		},
 	},
 }
 
 func newTestHandler(t *testing.T, bc Broadcaster, rl RateLimiter, ds DripStore) *Handler {
 	t.Helper()
 	return New(Deps{
-		Chains:       testChains,
+		Source:       testSource,
 		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
 		Limiter:      rl,
 		DripStore:    ds,
@@ -157,7 +182,7 @@ func TestPour_realLimiter_rateLimited(t *testing.T) {
 	bc := &mockBroadcaster{result: &tx.BroadcastResult{TxHash: "TX1"}}
 
 	h := New(Deps{
-		Chains:       testChains,
+		Source:       testSource,
 		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
 		Limiter:      limiter,
 		DripStore:    s,
@@ -178,5 +203,52 @@ func TestPour_realLimiter_rateLimited(t *testing.T) {
 	h.Pour(w2, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("second request: got %d, want 429", w2.Code)
+	}
+}
+
+// ----- chain detail tests -----
+
+func newChainDetailRequest(chainID string) *http.Request {
+	return httptest.NewRequestWithContext(
+		context.Background(), http.MethodGet, "/v1/chains/"+chainID, http.NoBody,
+	)
+}
+
+func TestChainDetail_found(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+
+	// chi router is needed for URL params; call via the router.
+	router := h.testRouter()
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, newChainDetailRequest("osmosis-1"))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", w.Code)
+	}
+	var resp pourapi.ChainDetailResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.ChainID != "osmosis-1" {
+		t.Errorf("ChainID: got %q, want osmosis-1", resp.ChainID)
+	}
+	if resp.Bech32Prefix != "osmo" {
+		t.Errorf("Bech32Prefix: got %q, want osmo", resp.Bech32Prefix)
+	}
+	if resp.DripAmount != "1000000uosmo" {
+		t.Errorf("DripAmount: got %q, want 1000000uosmo", resp.DripAmount)
+	}
+	if want := testLastChanged.UTC().Format(time.RFC3339); resp.LastChanged != want {
+		t.Errorf("LastChanged: got %q, want %q", resp.LastChanged, want)
+	}
+}
+
+func TestChainDetail_notFound(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+	router := h.testRouter()
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, newChainDetailRequest("unknown-1"))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status: got %d, want 404", w.Code)
 	}
 }
