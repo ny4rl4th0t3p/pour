@@ -5,6 +5,7 @@ abuse:
 
 chains:
   - chain_id: test-1
+    standalone: true
     enabled: true
     bech32_prefix: cosmos
     slip44: 118
