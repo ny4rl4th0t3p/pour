@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
-	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
@@ -27,44 +27,41 @@ type DripStore interface {
 	RecordDrip(ctx context.Context, d store.DripRecord) (int64, error)
 }
 
-// ChainEntry bundles the resolved chain info with its operator drip policy.
-type ChainEntry struct {
-	Info *chainregistry.ChainInfo
-	Drip chainregistry.DripPolicy
-}
-
 // Deps holds all dependencies for the handler set.
 type Deps struct {
-	Chains       map[string]ChainEntry // enabled chains keyed by chain_id
-	Broadcasters map[string]Broadcaster
-	Limiter      RateLimiter
-	DripStore    DripStore
-	GasCache     tx.GasCache // optional; may be nil
-	Mnemonic     string
-	Version      string
+	Source              chain.ChainSource
+	RegistryRefreshMode string
+	Broadcasters        map[string]Broadcaster
+	Limiter             RateLimiter
+	DripStore           DripStore
+	GasCache            tx.GasCache // optional; may be nil
+	Mnemonic            string
+	Version             string
 }
 
 // Handler holds injected dependencies and exposes one method per REST endpoint.
 type Handler struct {
-	chains       map[string]ChainEntry
-	broadcasters map[string]Broadcaster
-	limiter      RateLimiter
-	dripStore    DripStore
-	gasCache     tx.GasCache
-	mnemonic     string
-	version      string
+	source              chain.ChainSource
+	registryRefreshMode string
+	broadcasters        map[string]Broadcaster
+	limiter             RateLimiter
+	dripStore           DripStore
+	gasCache            tx.GasCache
+	mnemonic            string
+	version             string
 }
 
 // New constructs a Handler from the provided Deps.
 func New(deps Deps) *Handler {
 	return &Handler{
-		chains:       deps.Chains,
-		broadcasters: deps.Broadcasters,
-		limiter:      deps.Limiter,
-		dripStore:    deps.DripStore,
-		gasCache:     deps.GasCache,
-		mnemonic:     deps.Mnemonic,
-		version:      deps.Version,
+		source:              deps.Source,
+		registryRefreshMode: deps.RegistryRefreshMode,
+		broadcasters:        deps.Broadcasters,
+		limiter:             deps.Limiter,
+		dripStore:           deps.DripStore,
+		gasCache:            deps.GasCache,
+		mnemonic:            deps.Mnemonic,
+		version:             deps.Version,
 	}
 }
 

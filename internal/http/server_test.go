@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
+	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	"github.com/ny4rl4th0t3p/pour/internal/http/handlers"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
@@ -40,19 +42,29 @@ func newTestSrv(t *testing.T) *httptest.Server {
 	enabled := true
 	bech32 := "osmo"
 	slip44 := uint32(118)
-	grpcEP := "grpc.osmosis.zone:9090"
-	chains := &config.ChainsConfig{
+	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{{
 			ChainID:      "osmosis-1",
+			Standalone:   true,
 			Enabled:      &enabled,
 			Bech32Prefix: &bech32,
 			Slip44:       &slip44,
-			Endpoints:    &config.EndpointsConfig{GRPC: []string{grpcEP}},
+			Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
+			FeeTokens:    []config.FeeTokenConfig{{Denom: "uosmo"}},
 			Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
 		}},
 	}
+	mgr, err := chain.New(t.Context(), chain.Options{
+		Config:   cfg,
+		GasCache: gascache.New(s),
+	})
+	if err != nil {
+		t.Fatalf("chain.New: %v", err)
+	}
+	t.Cleanup(mgr.Close)
+
 	srv, err := New(Deps{
-		ChainsConfig: chains,
+		Manager:      mgr,
 		Serve:        &config.ServeConfig{Listen: ":0"},
 		Store:        s,
 		Limiter:      ratelimit.New(s, 10, time.Hour),

@@ -26,14 +26,14 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chain, ok := h.chains[req.ChainID]
+	snap, ok := h.source.GetActive(req.ChainID)
 	if !ok {
 		pourRequestsTotal.WithLabelValues(req.ChainID, "chain_not_found").Inc()
 		writeError(w, http.StatusNotFound, "chain not found or not enabled")
 		return
 	}
 
-	if err := tx.ValidateAddress(req.Address, chain.Info.Bech32Prefix); err != nil {
+	if err := tx.ValidateAddress(req.Address, snap.Info.Bech32Prefix); err != nil {
 		pourRequestsTotal.WithLabelValues(req.ChainID, "invalid_address").Inc()
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -52,7 +52,7 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	coin, err := config.ParseCoin(chain.Drip.Anonymous)
+	coin, err := config.ParseCoin(snap.Drip.Anonymous)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "invalid drip config")
 		return
