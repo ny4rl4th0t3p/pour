@@ -89,7 +89,7 @@ func FetchLive(ctx context.Context, opts FetchOptions) (*Snapshot, error) {
 
 func fetchChain(ctx context.Context, client *http.Client, baseURL, chainID string) (rawChainInfo, error) {
 	url := baseURL + "/" + ChainNameFromID(chainID) + "/chain.json"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return rawChainInfo{}, fmt.Errorf("chainregistry: build request for %s: %w", chainID, err)
 	}
