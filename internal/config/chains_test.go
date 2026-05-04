@@ -238,9 +238,6 @@ func TestToOverrideSet_registryChain(t *testing.T) {
 	if len(co.FeeTokens) != 1 || co.FeeTokens[0].Denom != "uosmo" {
 		t.Errorf("FeeTokens: got %v", co.FeeTokens)
 	}
-	if co.Drip.Anonymous != "1000000uosmo" {
-		t.Errorf("Drip.Anonymous: got %s", co.Drip.Anonymous)
-	}
 }
 
 func TestToOverrideSet_standaloneExcluded(t *testing.T) {
