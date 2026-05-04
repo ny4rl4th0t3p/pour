@@ -97,8 +97,9 @@ type ChainInfo struct {
 	FeeTokens []FeeToken
 
 	// Operational
-	BlockTime time.Duration
-	Enabled   bool // set from operator config; not part of the registry schema
+	BlockTime   time.Duration
+	Enabled     bool      // set from operator config; not part of the registry schema
+	LastChanged time.Time // when any resolved field last changed; zero for never-updated chains
 
 	// Source provenance per field group — for diff display and audit.
 	// Not classified by the field policy; managed internally by the resolver.
