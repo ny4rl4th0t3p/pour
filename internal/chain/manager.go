@@ -10,6 +10,7 @@ import (
 
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
+	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
@@ -34,8 +35,9 @@ type Manager struct {
 	refreshInterval time.Duration
 	registryBaseURL string
 
-	mu     sync.RWMutex
-	chains map[string]*Chain
+	mu          sync.RWMutex
+	chains      map[string]*Chain
+	lastFetched time.Time
 
 	log *slog.Logger
 }
@@ -73,6 +75,7 @@ func New(ctx context.Context, opts Options) (*Manager, error) {
 	}
 
 	registryIDs := opts.Config.EnabledRegistryChainIDs()
+	var firstFetch time.Time
 	if len(registryIDs) > 0 {
 		snap, err := chainregistry.FetchLive(ctx, chainregistry.FetchOptions{
 			BaseURL:  opts.RegistryBaseURL,
@@ -84,6 +87,7 @@ func New(ctx context.Context, opts Options) (*Manager, error) {
 		if _, err := regStore.UpdateLive(snap); err != nil {
 			return nil, fmt.Errorf("chain: populate store: %w", err)
 		}
+		firstFetch = time.Now()
 	}
 
 	m := &Manager{
@@ -94,6 +98,7 @@ func New(ctx context.Context, opts Options) (*Manager, error) {
 		refreshInterval: opts.RefreshInterval,
 		registryBaseURL: opts.RegistryBaseURL,
 		chains:          make(map[string]*Chain),
+		lastFetched:     firstFetch,
 		log:             opts.Logger,
 	}
 
@@ -105,29 +110,48 @@ func New(ctx context.Context, opts Options) (*Manager, error) {
 	return m, nil
 }
 
-// Get returns the active Chain for chainID.
-// Returns an error if the chain is not enabled or not found.
-func (m *Manager) Get(chainID string) (*Chain, error) {
+// GetActive returns the ChainSnapshot for an active chain.
+// Returns false if the chain does not exist or is not active.
+func (m *Manager) GetActive(chainID string) (ChainSnapshot, bool) {
 	m.mu.RLock()
 	c := m.chains[chainID]
 	m.mu.RUnlock()
 	if c == nil {
-		return nil, fmt.Errorf("chain: %q: not found or not enabled", chainID)
+		return ChainSnapshot{}, false
 	}
-	return c, nil
+	return ChainSnapshot{Info: c.Info(), Drip: c.Drip()}, true
 }
 
-// ListActive returns all active chains, sorted by chain ID.
-func (m *Manager) ListActive() []*Chain {
+// ListActive returns snapshots of all active chains, sorted by chain ID.
+func (m *Manager) ListActive() []ChainSnapshot {
 	m.mu.RLock()
-	out := make([]*Chain, 0, len(m.chains))
+	out := make([]ChainSnapshot, 0, len(m.chains))
 	for _, c := range m.chains {
-		out = append(out, c)
+		out = append(out, ChainSnapshot{Info: c.Info(), Drip: c.Drip()})
 	}
 	m.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].info.ChainID < out[j].info.ChainID
+		return out[i].Info.ChainID < out[j].Info.ChainID
 	})
+	return out
+}
+
+// LastFetched returns the time of the last successful registry fetch.
+// Returns the zero time for standalone-only setups.
+func (m *Manager) LastFetched() time.Time {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.lastFetched
+}
+
+// Clients returns a map of chain_id → tx.Client for all active chains.
+func (m *Manager) Clients() map[string]*tx.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make(map[string]*tx.Client, len(m.chains))
+	for id, c := range m.chains {
+		out[id] = c.Client()
+	}
 	return out
 }
 
@@ -154,6 +178,9 @@ func (m *Manager) Refresh(ctx context.Context) (*chainregistry.ChangeSet, error)
 	if err != nil {
 		return nil, fmt.Errorf("chain: refresh update: %w", err)
 	}
+	m.mu.Lock()
+	m.lastFetched = time.Now()
+	m.mu.Unlock()
 	return cs, m.reconcile()
 }
 

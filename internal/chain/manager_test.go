@@ -59,14 +59,14 @@ func TestManager_standaloneEnabled(t *testing.T) {
 	if len(active) != 1 {
 		t.Fatalf("ListActive: got %d, want 1", len(active))
 	}
-	if active[0].Info().ChainID != "mynet-1" {
-		t.Errorf("ChainID: got %q, want mynet-1", active[0].Info().ChainID)
+	if active[0].Info.ChainID != "mynet-1" {
+		t.Errorf("ChainID: got %q, want mynet-1", active[0].Info.ChainID)
 	}
-	if active[0].Info().Bech32Prefix != "mynet" {
-		t.Errorf("Bech32Prefix: got %q, want mynet", active[0].Info().Bech32Prefix)
+	if active[0].Info.Bech32Prefix != "mynet" {
+		t.Errorf("Bech32Prefix: got %q, want mynet", active[0].Info.Bech32Prefix)
 	}
-	if active[0].Drip().Anonymous != "1000000utest" {
-		t.Errorf("Drip.Anonymous: got %q", active[0].Drip().Anonymous)
+	if active[0].Drip.Anonymous != "1000000utest" {
+		t.Errorf("Drip.Anonymous: got %q", active[0].Drip.Anonymous)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestManager_standaloneDisabled(t *testing.T) {
 	}
 }
 
-func TestManager_get_enabled(t *testing.T) {
+func TestManager_getActive_enabled(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{
 			standaloneChainCfg("mynet-1", "mynet", true),
@@ -101,16 +101,16 @@ func TestManager_get_enabled(t *testing.T) {
 	}
 	t.Cleanup(m.Close)
 
-	c, err := m.Get("mynet-1")
-	if err != nil {
-		t.Fatalf("Get: %v", err)
+	snap, ok := m.GetActive("mynet-1")
+	if !ok {
+		t.Fatal("GetActive: expected found, got false")
 	}
-	if c.Info().ChainID != "mynet-1" {
-		t.Errorf("ChainID: got %q", c.Info().ChainID)
+	if snap.Info.ChainID != "mynet-1" {
+		t.Errorf("ChainID: got %q", snap.Info.ChainID)
 	}
 }
 
-func TestManager_get_unknown(t *testing.T) {
+func TestManager_getActive_unknown(t *testing.T) {
 	m, err := New(context.Background(), Options{
 		Config:   &config.ChainsConfig{},
 		GasCache: newTestGasCache(t),
@@ -120,12 +120,12 @@ func TestManager_get_unknown(t *testing.T) {
 	}
 	t.Cleanup(m.Close)
 
-	if _, err := m.Get("unknown-1"); err == nil {
-		t.Error("Get: expected error for unknown chain, got nil")
+	if _, ok := m.GetActive("unknown-1"); ok {
+		t.Error("GetActive: expected false for unknown chain, got true")
 	}
 }
 
-func TestManager_get_disabled(t *testing.T) {
+func TestManager_getActive_disabled(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{
 			standaloneChainCfg("mynet-1", "mynet", false),
@@ -138,8 +138,8 @@ func TestManager_get_disabled(t *testing.T) {
 	}
 	t.Cleanup(m.Close)
 
-	if _, err := m.Get("mynet-1"); err == nil {
-		t.Error("Get: expected error for disabled chain, got nil")
+	if _, ok := m.GetActive("mynet-1"); ok {
+		t.Error("GetActive: expected false for disabled chain, got true")
 	}
 }
 
@@ -163,7 +163,7 @@ func TestManager_multipleChains(t *testing.T) {
 		t.Fatalf("ListActive: got %d, want 2", len(active))
 	}
 	// ListActive returns sorted by chain ID.
-	if active[0].Info().ChainID != "alpha-1" || active[1].Info().ChainID != "gamma-1" {
-		t.Errorf("unexpected chain IDs: %q, %q", active[0].Info().ChainID, active[1].Info().ChainID)
+	if active[0].Info.ChainID != "alpha-1" || active[1].Info.ChainID != "gamma-1" {
+		t.Errorf("unexpected chain IDs: %q, %q", active[0].Info.ChainID, active[1].Info.ChainID)
 	}
 }
