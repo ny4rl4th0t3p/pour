@@ -59,7 +59,8 @@ func (s *stubChainSource) ListActive() []chain.ChainSnapshot {
 	return out
 }
 
-func (*stubChainSource) LastFetched() time.Time { return time.Time{} }
+func (*stubChainSource) LastFetched() time.Time  { return time.Time{} }
+func (*stubChainSource) PendingFrozenCount() int { return 0 }
 
 // ----- helpers -----
 

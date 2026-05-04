@@ -144,6 +144,9 @@ func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
 		for _, field := range classifiableFields {
 			ov, nv, changed := fieldValues(old, newInfo, field)
 			if !changed {
+				// If the registry reverted to the currently applied value, any
+				// stale pending entry for this field is now moot — clear it.
+				delete(s.pending, chainID+":"+field)
 				continue
 			}
 			hasChanged = true

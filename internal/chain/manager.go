@@ -144,6 +144,11 @@ func (m *Manager) LastFetched() time.Time {
 	return m.lastFetched
 }
 
+// PendingFrozenCount returns the number of freeze-policy changes awaiting acceptance.
+func (m *Manager) PendingFrozenCount() int {
+	return len(m.regStore.Pending())
+}
+
 // Clients returns a map of chain_id → tx.Client for all active chains.
 func (m *Manager) Clients() map[string]*tx.Client {
 	m.mu.RLock()
@@ -181,6 +186,7 @@ func (m *Manager) Refresh(ctx context.Context) (*chainregistry.ChangeSet, error)
 	m.mu.Lock()
 	m.lastFetched = time.Now()
 	m.mu.Unlock()
+	m.logChangeSet(cs)
 	return cs, m.reconcile()
 }
 
@@ -252,13 +258,28 @@ func (m *Manager) refreshLoop(ctx context.Context) {
 		}
 
 		backoffIdx = 0
-		if _, err := m.regStore.UpdateLive(snap); err != nil {
+		cs, err := m.regStore.UpdateLive(snap)
+		if err != nil {
 			m.log.Error("chain: registry update failed", "err", err)
 			continue
 		}
+		m.logChangeSet(cs)
 		if err := m.reconcile(); err != nil {
 			m.log.Error("chain: reconcile after refresh failed", "err", err)
 		}
+	}
+}
+
+func (m *Manager) logChangeSet(cs *chainregistry.ChangeSet) {
+	for _, fc := range cs.Warned {
+		m.log.Warn("chain: registry field changed",
+			"chain_id", fc.ChainID, "field", fc.Field,
+			"old", fc.OldValue, "new", fc.NewValue)
+	}
+	for _, fc := range cs.Frozen {
+		m.log.Warn("chain: registry field change requires acceptance (run 'pour chains pending')",
+			"chain_id", fc.ChainID, "field", fc.Field,
+			"old", fc.OldValue, "new", fc.NewValue)
 	}
 }
 

@@ -222,3 +222,39 @@ func TestAccept_NoPendingChange(t *testing.T) {
 		t.Fatal("expected error for non-existent pending change")
 	}
 }
+
+func TestUpdateLive_RegistryRevertClearsPending(t *testing.T) {
+	s := newStoreV1(t)
+
+	// Apply live-v1: queues a pending change for test-beta-1 Bech32Prefix (beta → beta2).
+	liveSnap := parseSnap(t, readTestFile(t, "testdata/snapshots/live-v1.json"))
+	s.UpdateLive(liveSnap) //nolint:errcheck // error not relevant to this test
+
+	pending := s.Pending()
+	found := false
+	for _, pc := range pending {
+		if pc.ChainID == "test-beta-1" && pc.Field == FieldBech32Prefix {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected pending change for test-beta-1 before revert")
+	}
+
+	// Re-apply initial-v1: registry reverted to original values.
+	// The pending entry should be cleared since the applied value matches the registry.
+	initSnap := parseSnap(t, readTestFile(t, "testdata/snapshots/initial-v1.json"))
+	s.UpdateLive(initSnap) //nolint:errcheck // error not relevant to this test
+
+	for _, pc := range s.Pending() {
+		if pc.ChainID == "test-beta-1" && pc.Field == FieldBech32Prefix {
+			t.Error("pending change should have been cleared when registry reverted")
+		}
+	}
+
+	// Applied value should still be "beta" (unchanged throughout).
+	info, _ := s.Get("test-beta-1")
+	if info.Bech32Prefix != "beta" {
+		t.Errorf("Bech32Prefix = %q, want %q", info.Bech32Prefix, "beta")
+	}
+}

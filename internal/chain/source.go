@@ -18,4 +18,5 @@ type ChainSource interface {
 	GetActive(chainID string) (ChainSnapshot, bool)
 	ListActive() []ChainSnapshot
 	LastFetched() time.Time
+	PendingFrozenCount() int
 }
