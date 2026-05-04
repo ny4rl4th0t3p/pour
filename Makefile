@@ -11,7 +11,7 @@ LDFLAGS = -ldflags "\
   -X main.commit=$(COMMIT) \
   -X main.date=$(DATE)"
 
-.PHONY: build build-no-ui test test-smoke lint \
+.PHONY: build build-no-ui test coverage test-smoke lint \
         proto-gen proto-clean proto-lint release
 
 ## Build the binary.
@@ -25,6 +25,16 @@ build-no-ui:
 ## Run all unit tests.
 test:
 	go test -count=1 -race ./...
+
+## Print per-package and per-function coverage, excluding generated code.
+COVERAGE_EXCLUDE = internal/tx/internal/proto|internal/ui
+coverage:
+	go test -count=1 -coverprofile=coverage.out -coverpkg=./... ./...
+	@grep -Ev "$(COVERAGE_EXCLUDE)" coverage.out > coverage.filtered.out
+	@echo "--- per-function ---"
+	go tool cover -func=coverage.filtered.out | grep -v "^total"
+	@echo "--- total (handwritten code only) ---"
+	go tool cover -func=coverage.filtered.out | grep "^total"
 
 ## Run end-to-end smoke test against a Docker Compose devnet (requires Docker).
 test-smoke:

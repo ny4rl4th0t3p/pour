@@ -99,3 +99,11 @@ func TestCheck_differentIPs(t *testing.T) {
 		t.Fatalf("second IP should have independent counter: %v", err)
 	}
 }
+
+func TestErrRateLimitExceeded_Error(t *testing.T) {
+	e := &ErrRateLimitExceeded{RetryAfter: 5 * time.Second}
+	want := "rate limit exceeded; retry after 5s"
+	if got := e.Error(); got != want {
+		t.Errorf("Error(): got %q, want %q", got, want)
+	}
+}

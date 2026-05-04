@@ -307,6 +307,9 @@ func (m *Manager) reconcile() error {
 	active := make(map[string]*Chain, len(enabled))
 	for id, info := range enabled {
 		if c, ok := m.chains[id]; ok {
+			// Update in-place: drip and resolved info may have changed on reload.
+			c.info = info
+			c.drip = m.dripFor(id)
 			active[id] = c
 			continue
 		}

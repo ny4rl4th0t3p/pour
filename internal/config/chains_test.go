@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
@@ -335,6 +336,129 @@ func TestToStandaloneInfos_registryExcluded(t *testing.T) {
 	}
 	if len(infos) != 0 {
 		t.Errorf("registry chain should not appear in standalone infos, got %v", infos)
+	}
+}
+
+func TestWindowDuration_invalid(t *testing.T) {
+	_, err := IPRateLimitConfig{Window: "notaduration"}.WindowDuration()
+	if err == nil {
+		t.Fatal("expected error for invalid window duration")
+	}
+}
+
+func TestWindowDuration_nonPositive(t *testing.T) {
+	_, err := IPRateLimitConfig{Window: "-1m"}.WindowDuration()
+	if err == nil {
+		t.Fatal("expected error for non-positive window")
+	}
+}
+
+func TestRefreshDuration_empty(t *testing.T) {
+	d, err := RegistryConfig{}.RefreshDuration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 6*time.Hour {
+		t.Errorf("got %v, want 6h", d)
+	}
+}
+
+func TestRefreshDuration_valid(t *testing.T) {
+	d, err := RegistryConfig{RefreshInterval: "12h"}.RefreshDuration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 12*time.Hour {
+		t.Errorf("got %v, want 12h", d)
+	}
+}
+
+func TestRefreshDuration_invalid(t *testing.T) {
+	_, err := RegistryConfig{RefreshInterval: "notaduration"}.RefreshDuration()
+	if err == nil {
+		t.Fatal("expected error for invalid refresh interval")
+	}
+}
+
+func TestRefreshDuration_nonPositive(t *testing.T) {
+	_, err := RegistryConfig{RefreshInterval: "-6h"}.RefreshDuration()
+	if err == nil {
+		t.Fatal("expected error for non-positive refresh interval")
+	}
+}
+
+func TestEnabledRegistryChainIDs(t *testing.T) {
+	enabled := true
+	disabled := false
+	cfg := &ChainsConfig{
+		Chains: []ChainConfig{
+			{ChainID: "osmosis-1", Enabled: &enabled},
+			{ChainID: "cosmos-1", Enabled: &disabled},
+			{ChainID: "mynet-1", Standalone: true, Enabled: &enabled},
+		},
+	}
+	ids := cfg.EnabledRegistryChainIDs()
+	if len(ids) != 1 || ids[0] != "osmosis-1" {
+		t.Errorf("EnabledRegistryChainIDs: got %v, want [osmosis-1]", ids)
+	}
+}
+
+func TestToChainInfo_basic(t *testing.T) {
+	bech32 := "osmo"
+	slip44 := uint32(118)
+	cfg := &ChainConfig{
+		ChainID:      "osmosis-1",
+		Bech32Prefix: &bech32,
+		Slip44:       &slip44,
+	}
+	info, err := cfg.ToChainInfo()
+	if err != nil {
+		t.Fatalf("ToChainInfo: %v", err)
+	}
+	if info.ChainID != "osmosis-1" {
+		t.Errorf("ChainID: got %q", info.ChainID)
+	}
+	if info.Bech32Prefix != "osmo" {
+		t.Errorf("Bech32Prefix: got %q", info.Bech32Prefix)
+	}
+	if info.Slip44 != 118 {
+		t.Errorf("Slip44: got %d", info.Slip44)
+	}
+}
+
+func TestToChainInfo_withBlockTime(t *testing.T) {
+	bt := "6s"
+	cfg := &ChainConfig{ChainID: "mynet-1", BlockTime: &bt}
+	info, err := cfg.ToChainInfo()
+	if err != nil {
+		t.Fatalf("ToChainInfo: %v", err)
+	}
+	if info.BlockTime != 6*time.Second {
+		t.Errorf("BlockTime: got %v, want 6s", info.BlockTime)
+	}
+}
+
+func TestToChainInfo_invalidBlockTime(t *testing.T) {
+	bt := "notaduration"
+	cfg := &ChainConfig{ChainID: "mynet-1", BlockTime: &bt}
+	if _, err := cfg.ToChainInfo(); err == nil {
+		t.Fatal("expected error for invalid block_time")
+	}
+}
+
+func TestToChainInfo_withKeyAlgoAndNetworkType(t *testing.T) {
+	ka := "secp256k1"
+	nt := "testnet"
+	cfg := &ChainConfig{ChainID: "mynet-1", KeyAlgo: &ka, NetworkType: &nt}
+	info, err := cfg.ToChainInfo()
+	if err != nil {
+		t.Fatalf("ToChainInfo: %v", err)
+	}
+	if string(info.KeyAlgo) != "secp256k1" {
+		t.Errorf("KeyAlgo: got %q", info.KeyAlgo)
+	}
+	if string(info.NetworkType) != "testnet" {
+		t.Errorf("NetworkType: got %q", info.NetworkType)
 	}
 }
 
