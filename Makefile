@@ -11,16 +11,12 @@ LDFLAGS = -ldflags "\
   -X main.commit=$(COMMIT) \
   -X main.date=$(DATE)"
 
-.PHONY: build build-minimal build-no-ui test test-smoke lint \
-        proto-gen proto-clean proto-lint embed-full embed-filtered release
+.PHONY: build build-no-ui test test-smoke lint \
+        proto-gen proto-clean proto-lint release
 
-## Build the binary with the full embedded registry (default).
+## Build the binary.
 build:
 	CGO_ENABLED=0 go build $(LDFLAGS) -o $(BINARY) $(CMD)
-
-## Build with the filtered registry (requires chains-filter.txt).
-build-minimal:
-	CGO_ENABLED=0 go build $(LDFLAGS) -tags registry_filtered -o $(BINARY) $(CMD)
 
 ## Build without the embedded UI bytes.
 build-no-ui:
@@ -38,6 +34,7 @@ test-smoke:
 
 ## Run golangci-lint.
 lint:
+	golangci-lint cache clean
 	golangci-lint run
 
 ## Generate Go bindings from vendored .proto files.
@@ -51,14 +48,6 @@ proto-clean:
 ## Lint vendored .proto files.
 proto-lint:
 	cd proto && buf lint
-
-## Fetch and embed the full chain-registry snapshot.
-embed-full:
-	@echo "Not yet implemented — see scripts/fetch-registry.sh (arrives in v0.2.0)"
-
-## Fetch and embed the filtered chain-registry snapshot.
-embed-filtered:
-	@echo "Not yet implemented — see scripts/fetch-registry.sh (arrives in v0.2.0)"
 
 ## Build release binaries via goreleaser.
 release:

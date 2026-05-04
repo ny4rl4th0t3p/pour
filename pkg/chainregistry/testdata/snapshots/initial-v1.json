@@ -1,0 +1,92 @@
+{
+  "chains": {
+    "test-alpha-1": {
+      "chain_id": "test-alpha-1",
+      "chain_name": "testalpha",
+      "network_type": "testnet",
+      "pretty_name": "Test Alpha",
+      "bech32_prefix": "alpha",
+      "slip44": 118,
+      "key_algos": [
+        "secp256k1"
+      ],
+      "fees": {
+        "fee_tokens": [
+          {
+            "denom": "ualpha",
+            "fixed_min_gas_price": 0,
+            "low_gas_price": 0.001,
+            "average_gas_price": 0.01,
+            "high_gas_price": 0.02,
+            "display": "ALPHA",
+            "exponent": 6
+          }
+        ]
+      },
+      "apis": {
+        "rpc": [
+          {
+            "address": "https://rpc.alpha.example:443",
+            "provider": "example"
+          }
+        ],
+        "rest": [
+          {
+            "address": "https://rest.alpha.example",
+            "provider": "example"
+          }
+        ],
+        "grpc": [
+          {
+            "address": "grpc.alpha.example:443",
+            "provider": "example"
+          }
+        ]
+      }
+    },
+    "test-beta-1": {
+      "chain_id": "test-beta-1",
+      "chain_name": "testbeta",
+      "network_type": "testnet",
+      "pretty_name": "Test Beta",
+      "bech32_prefix": "beta",
+      "slip44": 118,
+      "key_algos": [
+        "secp256k1"
+      ],
+      "fees": {
+        "fee_tokens": [
+          {
+            "denom": "ubeta",
+            "fixed_min_gas_price": 0,
+            "low_gas_price": 0.001,
+            "average_gas_price": 0.01,
+            "high_gas_price": 0.02,
+            "display": "BETA",
+            "exponent": 6
+          }
+        ]
+      },
+      "apis": {
+        "rpc": [
+          {
+            "address": "https://rpc.beta.example:443",
+            "provider": "example"
+          }
+        ],
+        "rest": [
+          {
+            "address": "https://rest.beta.example",
+            "provider": "example"
+          }
+        ],
+        "grpc": [
+          {
+            "address": "grpc.beta.example:443",
+            "provider": "example"
+          }
+        ]
+      }
+    }
+  }
+}
