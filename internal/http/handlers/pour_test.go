@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
-	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
@@ -40,12 +40,10 @@ func (m *mockDripStore) RecordDrip(_ context.Context, _ store.DripRecord) (int64
 
 // ----- helpers -----
 
-var testChains = map[string]config.ChainConfig{
+var testChains = map[string]ChainEntry{
 	"osmosis-1": {
-		ChainID:      "osmosis-1",
-		Enabled:      true,
-		Bech32Prefix: "osmo",
-		Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
+		Info: &chainregistry.ChainInfo{ChainID: "osmosis-1", Bech32Prefix: "osmo", Slip44: 118},
+		Drip: chainregistry.DripPolicy{Anonymous: "1000000uosmo"},
 	},
 }
 

@@ -33,7 +33,7 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := tx.ValidateAddress(req.Address, chain.Bech32Prefix); err != nil {
+	if err := tx.ValidateAddress(req.Address, chain.Info.Bech32Prefix); err != nil {
 		pourRequestsTotal.WithLabelValues(req.ChainID, "invalid_address").Inc()
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

@@ -37,11 +37,17 @@ func newTestSrv(t *testing.T) *httptest.Server {
 	}
 	t.Cleanup(func() { s.Close() })
 
+	enabled := true
+	bech32 := "osmo"
+	slip44 := uint32(118)
+	grpcEP := "grpc.osmosis.zone:9090"
 	chains := &config.ChainsConfig{
 		Chains: []config.ChainConfig{{
 			ChainID:      "osmosis-1",
-			Enabled:      true,
-			Bech32Prefix: "osmo",
+			Enabled:      &enabled,
+			Bech32Prefix: &bech32,
+			Slip44:       &slip44,
+			Endpoints:    &config.EndpointsConfig{GRPC: []string{grpcEP}},
 			Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
 		}},
 	}

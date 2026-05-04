@@ -17,6 +17,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/internal/ui"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
 // Deps holds everything cmd/pour passes into the HTTP layer.
@@ -105,13 +106,22 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-// enabledChains returns a map of chain_id → ChainConfig for all enabled chains.
-func enabledChains(cfg *config.ChainsConfig) map[string]config.ChainConfig {
-	out := make(map[string]config.ChainConfig, len(cfg.Chains))
+// enabledChains builds a ChainEntry map for all enabled chains from config.
+func enabledChains(cfg *config.ChainsConfig) map[string]handlers.ChainEntry {
+	out := make(map[string]handlers.ChainEntry, len(cfg.Chains))
 	for i := range cfg.Chains {
-		c := cfg.Chains[i]
-		if c.Enabled {
-			out[c.ChainID] = c
+		c := &cfg.Chains[i]
+		if !c.IsEnabled() {
+			continue
+		}
+		out[c.ChainID] = handlers.ChainEntry{
+			Info: c.ToChainInfo(),
+			Drip: chainregistry.DripPolicy{
+				Anonymous:           c.Drip.Anonymous,
+				Signed:              c.Drip.Signed,
+				MaxPerAddressPerDay: c.Drip.MaxPerAddressPerDay,
+				Memo:                c.Drip.Memo,
+			},
 		}
 	}
 	return out

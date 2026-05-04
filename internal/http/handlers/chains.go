@@ -12,8 +12,8 @@ func (h *Handler) Chains(w http.ResponseWriter, _ *http.Request) {
 	for id := range h.chains {
 		c := h.chains[id]
 		chains = append(chains, pourapi.ChainInfo{
-			ChainID:      c.ChainID,
-			Bech32Prefix: c.Bech32Prefix,
+			ChainID:      c.Info.ChainID,
+			Bech32Prefix: c.Info.Bech32Prefix,
 			DripAmount:   c.Drip.Anonymous,
 		})
 	}
