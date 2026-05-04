@@ -1,17 +1,18 @@
-name: Test
+name: CI
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
       - 'proto/**'
+      - 'Makefile'
+      - '.golangci.yml'
       - 'Dockerfile'
       - 'tests/smoke/**'
-      - 'Makefile'
-      - '.github/workflows/test.yml'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +20,28 @@ permissions:
 
 jobs:
   test:
-    name: Build / Test
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install proto tools
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.69.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - run: make proto-gen
+      - run: make build
+      - run: make test
+
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,9 +59,9 @@ jobs:
 
       - run: make proto-gen
 
-      - run: make build
-
-      - run: make test
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
 
   smoke:
     name: Smoke
