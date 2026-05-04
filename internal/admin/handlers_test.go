@@ -3,11 +3,18 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
+	"github.com/ny4rl4th0t3p/pour/internal/config"
+	"github.com/ny4rl4th0t3p/pour/internal/gascache"
+	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
@@ -182,5 +189,182 @@ func TestHandler_accept_allFields_notFound(t *testing.T) {
 	h.Accept(w, r)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("all fields not found: got %d, want 404", w.Code)
+	}
+}
+
+// ----- refresh / reload handler tests -----
+
+// standaloneOnlyManager builds a Manager with a single standalone chain and no
+// registry chains, so Refresh returns an empty ChangeSet without any HTTP fetch.
+func standaloneOnlyManager(t *testing.T) *chain.Manager {
+	t.Helper()
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	enabled := true
+	bech32 := "mynet"
+	slip44 := uint32(118)
+	cfg := &config.ChainsConfig{
+		Chains: []config.ChainConfig{{
+			ChainID:      "mynet-1",
+			Standalone:   true,
+			Enabled:      &enabled,
+			Bech32Prefix: &bech32,
+			Slip44:       &slip44,
+			Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
+			FeeTokens:    []config.FeeTokenConfig{{Denom: "umynet"}},
+			Drip:         config.DripConfig{Anonymous: "1000000umynet", MaxPerAddressPerDay: "10000000umynet"},
+		}},
+	}
+	mgr, err := chain.New(t.Context(), chain.Options{Config: cfg, GasCache: gascache.New(s)})
+	if err != nil {
+		t.Fatalf("chain.New: %v", err)
+	}
+	t.Cleanup(mgr.Close)
+	return mgr
+}
+
+// minimalChainsYML writes a valid single-chain standalone chains.yml to dir and returns its path.
+func minimalChainsYML(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "chains.yml")
+	const content = `chains:
+  - chain_id: mynet-1
+    standalone: true
+    enabled: true
+    bech32_prefix: mynet
+    slip44: 118
+    endpoints:
+      grpc:
+        - localhost:9999
+    fee_tokens:
+      - denom: umynet
+        average_gas_price: "0.025"
+    drip:
+      anonymous: 1000000umynet
+      max_per_address_per_day: 10000000umynet
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write chains.yml: %v", err)
+	}
+	return path
+}
+
+func TestHandler_refresh_standaloneOnly(t *testing.T) {
+	mgr := standaloneOnlyManager(t)
+	h := New(Deps{RegStore: mgr.Store(), Manager: mgr})
+
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/registry/refresh", http.NoBody)
+	w := httptest.NewRecorder()
+	h.Refresh(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("refresh: got %d, want 200", w.Code)
+	}
+	var resp struct {
+		HotReloaded int `json:"hot_reloaded"`
+		Warned      int `json:"warned"`
+		Frozen      int `json:"frozen"`
+		Removed     int `json:"removed"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.HotReloaded != 0 || resp.Warned != 0 || resp.Frozen != 0 || resp.Removed != 0 {
+		t.Errorf("expected all-zero changeset for standalone-only manager, got %+v", resp)
+	}
+}
+
+func TestHandler_refresh_registryError(t *testing.T) {
+	fetches := make(chan struct{}, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fetches <- struct{}{}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"chain_id":"mychain-1","chain_name":"mychain","bech32_prefix":"mychain",`+
+			`"slip44":118,"network_type":"testnet","key_algos":["secp256k1"],`+
+			`"fees":{"fee_tokens":[{"denom":"umychain","average_gas_price":"0.025"}]},`+
+			`"apis":{"grpc":[{"address":"localhost:9999"}]}}`)
+	}))
+
+	enabled := true
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	cfg := &config.ChainsConfig{
+		Chains: []config.ChainConfig{{
+			ChainID: "mychain-1",
+			Enabled: &enabled,
+			Drip:    config.DripConfig{Anonymous: "1000000umychain", MaxPerAddressPerDay: "10000000umychain"},
+		}},
+	}
+	mgr, err := chain.New(t.Context(), chain.Options{
+		Config:          cfg,
+		GasCache:        gascache.New(s),
+		RegistryBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("chain.New: %v", err)
+	}
+	t.Cleanup(mgr.Close)
+
+	// Drain the initial fetch from New().
+	select {
+	case <-fetches:
+	case <-t.Context().Done():
+		t.Fatal("initial fetch timed out")
+	}
+
+	// Close the server so the next Refresh call fails.
+	srv.Close()
+
+	h := New(Deps{RegStore: mgr.Store(), Manager: mgr})
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/registry/refresh", http.NoBody)
+	w := httptest.NewRecorder()
+	h.Refresh(w, r)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("refresh with dead registry: got %d, want 502", w.Code)
+	}
+}
+
+func TestHandler_reload_configNotFound(t *testing.T) {
+	mgr := standaloneOnlyManager(t)
+	h := New(Deps{
+		RegStore:   mgr.Store(),
+		Manager:    mgr,
+		ConfigPath: filepath.Join(t.TempDir(), "nonexistent.yml"),
+	})
+
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/reload", http.NoBody)
+	w := httptest.NewRecorder()
+	h.Reload(w, r)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("reload config not found: got %d, want 422", w.Code)
+	}
+}
+
+func TestHandler_reload(t *testing.T) {
+	configPath := minimalChainsYML(t, t.TempDir())
+	mgr := standaloneOnlyManager(t)
+	h := New(Deps{RegStore: mgr.Store(), Manager: mgr, ConfigPath: configPath})
+
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/admin/reload", http.NoBody)
+	w := httptest.NewRecorder()
+	h.Reload(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("reload: got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp map[string]bool
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp["ok"] {
+		t.Errorf("reload: expected {ok:true}, got %v", resp)
 	}
 }

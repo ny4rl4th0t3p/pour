@@ -17,6 +17,7 @@ func (h *Handler) Info(w http.ResponseWriter, _ *http.Request) {
 		Version:             h.version,
 		RegistryLastFetched: lastFetched,
 		RegistryRefreshMode: h.registryRefreshMode,
+		PendingFrozenCount:  h.source.PendingFrozenCount(),
 		Abuse: pourapi.AbuseInfo{
 			PoWEnabled:                false,
 			APIKeysEnabled:            false,

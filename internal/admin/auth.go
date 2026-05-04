@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	tokenEnvVar = "POUR_ADMIN_TOKEN"
-	tokenFile   = ".pour-admin-token" //nolint:gosec // path, not a credential
+	TokenEnvVar = "POUR_ADMIN_TOKEN"
+	TokenFile   = ".pour-admin-token" //nolint:gosec // path, not a credential
 	tokenPrefix = "pour_admin_"
 	tokenBytes  = 32
 )
@@ -30,10 +30,10 @@ type TokenStore struct {
 // NewTokenStore resolves the admin token in priority order:
 // POUR_ADMIN_TOKEN env → .pour-admin-token file → generate + write new token.
 func NewTokenStore() (*TokenStore, error) {
-	if t := os.Getenv(tokenEnvVar); t != "" {
+	if t := os.Getenv(TokenEnvVar); t != "" {
 		return &TokenStore{token: t}, nil
 	}
-	if data, err := os.ReadFile(tokenFile); err == nil {
+	if data, err := os.ReadFile(TokenFile); err == nil {
 		return &TokenStore{token: strings.TrimSpace(string(data))}, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("admin: read token file: %w", err)
@@ -43,10 +43,10 @@ func NewTokenStore() (*TokenStore, error) {
 		return nil, fmt.Errorf("admin: generate token: %w", err)
 	}
 	token := tokenPrefix + base64.RawURLEncoding.EncodeToString(buf)
-	if err := os.WriteFile(tokenFile, []byte(token+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(TokenFile, []byte(token+"\n"), 0o600); err != nil {
 		return nil, fmt.Errorf("admin: write token file: %w", err)
 	}
-	slog.Info("admin: generated admin token", "path", tokenFile)
+	slog.Info("admin: generated admin token", "path", TokenFile)
 	return &TokenStore{token: token}, nil
 }
 

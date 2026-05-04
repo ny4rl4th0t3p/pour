@@ -30,6 +30,7 @@ var (
 
 type CLI struct {
 	Serve   ServeCmd   `cmd:"" help:"Start the faucet daemon."`
+	Chains  ChainsCmd  `cmd:"" help:"Chain registry management."`
 	Keys    KeysCmd    `cmd:"" help:"Key management."`
 	Version VersionCmd `cmd:"" help:"Print version information."`
 }

@@ -19,6 +19,7 @@ type InfoResponse struct {
 	Version             string    `json:"version"`
 	RegistryLastFetched string    `json:"registry_last_fetched"`
 	RegistryRefreshMode string    `json:"registry_refresh_mode"`
+	PendingFrozenCount  int       `json:"pending_frozen_count"`
 	Abuse               AbuseInfo `json:"abuse"`
 }
 

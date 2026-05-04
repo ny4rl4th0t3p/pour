@@ -1,0 +1,6 @@
+chains:
+  - chain_id: osmosis-1
+    enabled: true
+    drip:
+      anonymous: 1000000uosmo
+      max_per_address_per_day: 50000000uosmo
