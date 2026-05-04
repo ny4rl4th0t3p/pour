@@ -17,6 +17,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/internal/ui"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
 // Deps holds everything cmd/pour passes into the HTTP layer.
@@ -38,8 +39,11 @@ type Server struct {
 }
 
 // New builds the chi router with all middleware and routes wired up.
-func New(deps Deps) *Server {
-	chains := enabledChains(deps.ChainsConfig)
+func New(deps Deps) (*Server, error) {
+	chains, err := enabledChains(deps.ChainsConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	h := handlers.New(handlers.Deps{
 		Chains:       chains,
@@ -72,7 +76,7 @@ func New(deps Deps) *Server {
 		r.Get("/altcha.min.js", uiH.ServeHTTP)
 	}
 
-	return &Server{router: r, addr: deps.Serve.Listen}
+	return &Server{router: r, addr: deps.Serve.Listen}, nil
 }
 
 // Start begins serving on the configured address and blocks until ctx is canceled,
@@ -105,14 +109,27 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-// enabledChains returns a map of chain_id → ChainConfig for all enabled chains.
-func enabledChains(cfg *config.ChainsConfig) map[string]config.ChainConfig {
-	out := make(map[string]config.ChainConfig, len(cfg.Chains))
+// enabledChains builds a ChainEntry map for all enabled chains from config.
+func enabledChains(cfg *config.ChainsConfig) (map[string]handlers.ChainEntry, error) {
+	out := make(map[string]handlers.ChainEntry, len(cfg.Chains))
 	for i := range cfg.Chains {
-		c := cfg.Chains[i]
-		if c.Enabled {
-			out[c.ChainID] = c
+		c := &cfg.Chains[i]
+		if !c.IsEnabled() {
+			continue
+		}
+		info, err := c.ToChainInfo()
+		if err != nil {
+			return nil, err
+		}
+		out[c.ChainID] = handlers.ChainEntry{
+			Info: info,
+			Drip: chainregistry.DripPolicy{
+				Anonymous:           c.Drip.Anonymous,
+				Signed:              c.Drip.Signed,
+				MaxPerAddressPerDay: c.Drip.MaxPerAddressPerDay,
+				Memo:                c.Drip.Memo,
+			},
 		}
 	}
-	return out
+	return out, nil
 }

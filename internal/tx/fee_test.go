@@ -6,8 +6,11 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/shopspring/decimal"
+
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/internal/tx/testdata/fakechain"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
 func txSvcClient(t *testing.T, cfg fakechain.Config) txv1beta1.ServiceClient {
@@ -37,7 +40,7 @@ func TestEstimateFee_trustedCache(t *testing.T) {
 		SampleCount:    5, // trusted
 	}
 	req := SendRequest{GasCache: &stubCache{estimate: cached}}
-	chain := ChainConfig{ChainID: "osmosis-1"}
+	chain := &chainregistry.ChainInfo{ChainID: "osmosis-1"}
 
 	est, err := estimateFee(t.Context(), svc, chain, msgs, req, nil)
 	if err != nil {
@@ -56,9 +59,9 @@ func TestEstimateFee_trustedCache(t *testing.T) {
 func TestEstimateFee_simulate(t *testing.T) {
 	svc := txSvcClient(t, fakechain.Config{GasUsed: 100_000})
 	msgs := oneMsgSend(t)
-	chain := ChainConfig{
+	chain := &chainregistry.ChainInfo{
 		ChainID:   "osmosis-1",
-		FeeTokens: []FeeToken{{Denom: "uosmo", AverageGasPrice: "0.025"}},
+		FeeTokens: []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
 	}
 
 	est, err := estimateFee(t.Context(), svc, chain, msgs, SendRequest{}, nil)
@@ -76,9 +79,9 @@ func TestEstimateFee_simulate(t *testing.T) {
 func TestEstimateFee_registryFallback(t *testing.T) {
 	svc := txSvcClient(t, fakechain.Config{GasUsed: 0}) // simulate returns Unimplemented
 	msgs := oneMsgSend(t)
-	chain := ChainConfig{
+	chain := &chainregistry.ChainInfo{
 		ChainID:   "osmosis-1",
-		FeeTokens: []FeeToken{{Denom: "uosmo", AverageGasPrice: "0.025"}},
+		FeeTokens: []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
 	}
 
 	est, err := estimateFee(t.Context(), svc, chain, msgs, SendRequest{}, nil)
@@ -98,7 +101,7 @@ func TestEstimateFee_registryFallback(t *testing.T) {
 func TestEstimateFee_staticDefaults(t *testing.T) {
 	svc := txSvcClient(t, fakechain.Config{GasUsed: 0})
 	msgs := oneMsgSend(t)
-	chain := ChainConfig{ChainID: "osmosis-1"} // no FeeTokens
+	chain := &chainregistry.ChainInfo{ChainID: "osmosis-1"} // no FeeTokens
 
 	est, err := estimateFee(t.Context(), svc, chain, msgs, SendRequest{}, nil)
 	if err != nil {

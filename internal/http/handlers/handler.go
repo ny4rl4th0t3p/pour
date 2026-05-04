@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
@@ -27,9 +27,15 @@ type DripStore interface {
 	RecordDrip(ctx context.Context, d store.DripRecord) (int64, error)
 }
 
+// ChainEntry bundles the resolved chain info with its operator drip policy.
+type ChainEntry struct {
+	Info *chainregistry.ChainInfo
+	Drip chainregistry.DripPolicy
+}
+
 // Deps holds all dependencies for the handler set.
 type Deps struct {
-	Chains       map[string]config.ChainConfig // enabled chains keyed by chain_id
+	Chains       map[string]ChainEntry // enabled chains keyed by chain_id
 	Broadcasters map[string]Broadcaster
 	Limiter      RateLimiter
 	DripStore    DripStore
@@ -40,7 +46,7 @@ type Deps struct {
 
 // Handler holds injected dependencies and exposes one method per REST endpoint.
 type Handler struct {
-	chains       map[string]config.ChainConfig
+	chains       map[string]ChainEntry
 	broadcasters map[string]Broadcaster
 	limiter      RateLimiter
 	dripStore    DripStore

@@ -73,7 +73,11 @@ func (c *ServeCmd) Run() error {
 	defer db.Close()
 
 	gc := gascache.New(db)
-	gc.Start(ctx, lowGasPriceFn(chains))
+	lgpFn, err := lowGasPriceFn(chains)
+	if err != nil {
+		return err
+	}
+	gc.Start(ctx, lgpFn)
 
 	window, _ := chains.Abuse.IPRateLimit.WindowDuration()
 	rpw := chains.Abuse.IPRateLimit.RequestsPerWindow
@@ -90,20 +94,15 @@ func (c *ServeCmd) Run() error {
 		}
 	}()
 	for i := range chains.Chains {
-		chain := chains.Chains[i]
-		if !chain.Enabled {
+		chain := &chains.Chains[i]
+		if !chain.IsEnabled() {
 			continue
 		}
-		if len(chain.Endpoints.GRPC) == 0 {
-			return fmt.Errorf("chain %q: no gRPC endpoints configured", chain.ChainID)
+		info, err := chain.ToChainInfo()
+		if err != nil {
+			return err
 		}
-		client, err := tx.New(tx.ChainConfig{
-			ChainID:      chain.ChainID,
-			GRPCEndpoint: chain.Endpoints.GRPC[0],
-			Bech32Prefix: chain.Bech32Prefix,
-			Slip44:       chain.Slip44,
-			FeeTokens:    makeFeeTokens(chain.FeeTokens),
-		}, tx.Options{GasCache: gc})
+		client, err := tx.New(info, tx.Options{GasCache: gc})
 		if err != nil {
 			return fmt.Errorf("chain %q: tx client: %w", chain.ChainID, err)
 		}
@@ -111,7 +110,7 @@ func (c *ServeCmd) Run() error {
 		broadcasters[chain.ChainID] = client
 	}
 
-	srv := pourhttp.New(pourhttp.Deps{
+	srv, err := pourhttp.New(pourhttp.Deps{
 		ChainsConfig: chains,
 		Serve:        &c.ServeConfig,
 		Store:        db,
@@ -121,6 +120,9 @@ func (c *ServeCmd) Run() error {
 		Mnemonic:     mnemonic,
 		Version:      version,
 	})
+	if err != nil {
+		return err
+	}
 	return srv.Start(ctx)
 }
 
@@ -158,30 +160,20 @@ func main() {
 }
 
 // lowGasPriceFn builds a gascache.LowGasPriceFn from the loaded config.
-// It uses the first fee token's low_gas_price for each chain.
-func lowGasPriceFn(cfg *config.ChainsConfig) gascache.LowGasPriceFn {
+func lowGasPriceFn(cfg *config.ChainsConfig) (gascache.LowGasPriceFn, error) {
 	m := make(map[string]string, len(cfg.Chains))
 	for i := range cfg.Chains {
-		c := cfg.Chains[i]
-		if len(c.FeeTokens) > 0 {
-			m[c.ChainID] = c.FeeTokens[0].LowGasPrice
+		c := &cfg.Chains[i]
+		info, err := c.ToChainInfo()
+		if err != nil {
+			return nil, err
+		}
+		if len(info.FeeTokens) > 0 && !info.FeeTokens[0].LowGasPrice.IsZero() {
+			m[c.ChainID] = info.FeeTokens[0].LowGasPrice.String()
 		}
 	}
 	return func(chainID string) (string, bool) {
 		v, ok := m[chainID]
 		return v, ok && v != ""
-	}
-}
-
-// makeFeeTokens converts config.FeeTokenConfig slice to tx.FeeToken slice.
-func makeFeeTokens(in []config.FeeTokenConfig) []tx.FeeToken {
-	out := make([]tx.FeeToken, len(in))
-	for i, ft := range in {
-		out[i] = tx.FeeToken{
-			Denom:           ft.Denom,
-			AverageGasPrice: ft.AverageGasPrice,
-			LowGasPrice:     ft.LowGasPrice,
-		}
-	}
-	return out
+	}, nil
 }
