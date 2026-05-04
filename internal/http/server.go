@@ -28,6 +28,7 @@ type Deps struct {
 	Limiter      handlers.RateLimiter
 	Broadcasters map[string]handlers.Broadcaster // chain_id → tx.Client
 	GasCache     tx.GasCache                     // optional; may be nil
+	AdminHandler nethttp.Handler                 // optional; mounted at /admin when non-nil
 	Mnemonic     string
 	Version      string
 }
@@ -65,6 +66,10 @@ func New(deps Deps) (*Server, error) {
 	r.Get("/v1/info", h.Info)
 	r.Get("/v1/chains", h.Chains)
 	r.Get("/health", h.Health)
+
+	if deps.AdminHandler != nil {
+		r.Mount("/admin", deps.AdminHandler)
+	}
 
 	if deps.Serve.Metrics {
 		r.Get("/metrics", promhttp.Handler().ServeHTTP)
