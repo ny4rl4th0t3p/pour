@@ -221,7 +221,10 @@ func TestToOverrideSet_registryChain(t *testing.T) {
 		t.Fatalf("LoadChains: %v", err)
 	}
 
-	ov := cfg.ToOverrideSet()
+	ov, err := cfg.ToOverrideSet()
+	if err != nil {
+		t.Fatalf("ToOverrideSet: %v", err)
+	}
 	co, ok := ov.Chains["osmosis-1"]
 	if !ok {
 		t.Fatal("expected osmosis-1 in override set")
@@ -258,7 +261,10 @@ chains:
 		t.Fatalf("LoadChains: %v", err)
 	}
 
-	ov := cfg.ToOverrideSet()
+	ov, err := cfg.ToOverrideSet()
+	if err != nil {
+		t.Fatalf("ToOverrideSet: %v", err)
+	}
 	if _, ok := ov.Chains["mynet-1"]; ok {
 		t.Error("standalone chain should not appear in override set")
 	}
@@ -287,7 +293,10 @@ chains:
 		t.Fatalf("LoadChains: %v", err)
 	}
 
-	infos := cfg.ToStandaloneInfos()
+	infos, err := cfg.ToStandaloneInfos()
+	if err != nil {
+		t.Fatalf("ToStandaloneInfos: %v", err)
+	}
 	if len(infos) != 1 {
 		t.Fatalf("expected 1 standalone info, got %d", len(infos))
 	}
@@ -323,7 +332,11 @@ func TestToStandaloneInfos_registryExcluded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadChains: %v", err)
 	}
-	if infos := cfg.ToStandaloneInfos(); len(infos) != 0 {
+	infos, err := cfg.ToStandaloneInfos()
+	if err != nil {
+		t.Fatalf("ToStandaloneInfos: %v", err)
+	}
+	if len(infos) != 0 {
 		t.Errorf("registry chain should not appear in standalone infos, got %v", infos)
 	}
 }

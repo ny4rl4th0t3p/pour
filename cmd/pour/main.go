@@ -73,7 +73,11 @@ func (c *ServeCmd) Run() error {
 	defer db.Close()
 
 	gc := gascache.New(db)
-	gc.Start(ctx, lowGasPriceFn(chains))
+	lgpFn, err := lowGasPriceFn(chains)
+	if err != nil {
+		return err
+	}
+	gc.Start(ctx, lgpFn)
 
 	window, _ := chains.Abuse.IPRateLimit.WindowDuration()
 	rpw := chains.Abuse.IPRateLimit.RequestsPerWindow
@@ -94,7 +98,11 @@ func (c *ServeCmd) Run() error {
 		if !chain.IsEnabled() {
 			continue
 		}
-		client, err := tx.New(chain.ToChainInfo(), tx.Options{GasCache: gc})
+		info, err := chain.ToChainInfo()
+		if err != nil {
+			return err
+		}
+		client, err := tx.New(info, tx.Options{GasCache: gc})
 		if err != nil {
 			return fmt.Errorf("chain %q: tx client: %w", chain.ChainID, err)
 		}
@@ -102,7 +110,7 @@ func (c *ServeCmd) Run() error {
 		broadcasters[chain.ChainID] = client
 	}
 
-	srv := pourhttp.New(pourhttp.Deps{
+	srv, err := pourhttp.New(pourhttp.Deps{
 		ChainsConfig: chains,
 		Serve:        &c.ServeConfig,
 		Store:        db,
@@ -112,6 +120,9 @@ func (c *ServeCmd) Run() error {
 		Mnemonic:     mnemonic,
 		Version:      version,
 	})
+	if err != nil {
+		return err
+	}
 	return srv.Start(ctx)
 }
 
@@ -149,11 +160,14 @@ func main() {
 }
 
 // lowGasPriceFn builds a gascache.LowGasPriceFn from the loaded config.
-func lowGasPriceFn(cfg *config.ChainsConfig) gascache.LowGasPriceFn {
+func lowGasPriceFn(cfg *config.ChainsConfig) (gascache.LowGasPriceFn, error) {
 	m := make(map[string]string, len(cfg.Chains))
 	for i := range cfg.Chains {
 		c := &cfg.Chains[i]
-		info := c.ToChainInfo()
+		info, err := c.ToChainInfo()
+		if err != nil {
+			return nil, err
+		}
 		if len(info.FeeTokens) > 0 && !info.FeeTokens[0].LowGasPrice.IsZero() {
 			m[c.ChainID] = info.FeeTokens[0].LowGasPrice.String()
 		}
@@ -161,5 +175,5 @@ func lowGasPriceFn(cfg *config.ChainsConfig) gascache.LowGasPriceFn {
 	return func(chainID string) (string, bool) {
 		v, ok := m[chainID]
 		return v, ok && v != ""
-	}
+	}, nil
 }

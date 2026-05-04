@@ -51,7 +51,7 @@ func newTestSrv(t *testing.T) *httptest.Server {
 			Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
 		}},
 	}
-	srv := New(Deps{
+	srv, err := New(Deps{
 		ChainsConfig: chains,
 		Serve:        &config.ServeConfig{Listen: ":0"},
 		Store:        s,
@@ -60,6 +60,9 @@ func newTestSrv(t *testing.T) *httptest.Server {
 		Mnemonic:     "test",
 		Version:      "test",
 	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	return httptest.NewServer(srv.router)
 }
 

@@ -177,8 +177,12 @@ func LoadChains(path string) (*ChainsConfig, error) {
 			return nil, fmt.Errorf("config: chain at index %d: chain_id is required", i)
 		}
 		if chain.BlockTime != nil {
-			if d, err := time.ParseDuration(*chain.BlockTime); err != nil || d <= 0 {
-				return nil, fmt.Errorf("config: chain %q: block_time %q: must be a positive duration", chain.ChainID, *chain.BlockTime)
+			d, err := time.ParseDuration(*chain.BlockTime)
+			if err != nil {
+				return nil, fmt.Errorf("config: chain %q: block_time: %w", chain.ChainID, err)
+			}
+			if d <= 0 {
+				return nil, fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
 			}
 		}
 		if chain.Standalone {
@@ -224,7 +228,7 @@ func validateStandalone(chain *ChainConfig) error {
 
 // ToOverrideSet converts all registry chains (non-standalone) into a
 // chainregistry.OverrideSet. Called at daemon startup and on config reload.
-func (c *ChainsConfig) ToOverrideSet() *chainregistry.OverrideSet {
+func (c *ChainsConfig) ToOverrideSet() (*chainregistry.OverrideSet, error) {
 	ov := &chainregistry.OverrideSet{
 		Chains: make(map[string]*chainregistry.ChainOverride, len(c.Chains)),
 	}
@@ -255,7 +259,13 @@ func (c *ChainsConfig) ToOverrideSet() *chainregistry.OverrideSet {
 			co.KeyAlgo = &ka
 		}
 		if chain.BlockTime != nil {
-			d, _ := time.ParseDuration(*chain.BlockTime) // already validated in LoadChains
+			d, err := time.ParseDuration(*chain.BlockTime)
+			if err != nil {
+				return nil, fmt.Errorf("config: chain %q: block_time: %w", chain.ChainID, err)
+			}
+			if d <= 0 {
+				return nil, fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
+			}
 			co.BlockTime = &d
 		}
 		if chain.Endpoints != nil {
@@ -275,12 +285,12 @@ func (c *ChainsConfig) ToOverrideSet() *chainregistry.OverrideSet {
 		}
 		ov.Chains[chain.ChainID] = co
 	}
-	return ov
+	return ov, nil
 }
 
 // ToChainInfo converts a ChainConfig to a *chainregistry.ChainInfo.
 // Nil pointer fields produce zero values.
-func (c *ChainConfig) ToChainInfo() *chainregistry.ChainInfo {
+func (c *ChainConfig) ToChainInfo() (*chainregistry.ChainInfo, error) {
 	info := &chainregistry.ChainInfo{
 		ChainID:      c.ChainID,
 		Bech32Prefix: derefString(c.Bech32Prefix),
@@ -296,7 +306,13 @@ func (c *ChainConfig) ToChainInfo() *chainregistry.ChainInfo {
 		info.KeyAlgo = chainregistry.KeyAlgo(*c.KeyAlgo)
 	}
 	if c.BlockTime != nil {
-		d, _ := time.ParseDuration(*c.BlockTime) // already validated in LoadChains
+		d, err := time.ParseDuration(*c.BlockTime)
+		if err != nil {
+			return nil, fmt.Errorf("config: chain %q: block_time: %w", c.ChainID, err)
+		}
+		if d <= 0 {
+			return nil, fmt.Errorf("config: chain %q: block_time %q: must be positive", c.ChainID, *c.BlockTime)
+		}
 		info.BlockTime = d
 	}
 	if c.Endpoints != nil {
@@ -312,21 +328,25 @@ func (c *ChainConfig) ToChainInfo() *chainregistry.ChainInfo {
 			HighGasPrice:    parseDecimal(ft.HighGasPrice),
 		})
 	}
-	return info
+	return info, nil
 }
 
 // ToStandaloneInfos converts all standalone chains into chainregistry.ChainInfo
 // values ready for store.AddStandalone. Called at daemon startup.
-func (c *ChainsConfig) ToStandaloneInfos() []chainregistry.ChainInfo {
+func (c *ChainsConfig) ToStandaloneInfos() ([]chainregistry.ChainInfo, error) {
 	var infos []chainregistry.ChainInfo
 	for i := range c.Chains {
 		chain := &c.Chains[i]
 		if !chain.Standalone {
 			continue
 		}
-		infos = append(infos, *chain.ToChainInfo())
+		info, err := chain.ToChainInfo()
+		if err != nil {
+			return nil, err
+		}
+		infos = append(infos, *info)
 	}
-	return infos
+	return infos, nil
 }
 
 // ParseCoin parses a Cosmos SDK coin string of the form "<amount><denom>"
