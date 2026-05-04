@@ -1,6 +1,7 @@
 package chainregistry
 
 import (
+	"slices"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -32,9 +33,6 @@ type ChainOverride struct {
 	Endpoints *EndpointsOverride
 	FeeTokens []FeeTokenOverride
 	BlockTime *time.Duration
-
-	// Drip is required for chains the operator enables for serving.
-	Drip DripPolicy
 
 	// Distributors and BatchWindow are v0.3.0 fields; stored here so chains.yml
 	// can include them without causing parse errors.
@@ -72,6 +70,9 @@ type DripPolicy struct {
 // applyOverride merges ov into info unconditionally (always wins over registry data).
 // nil pointer fields in ov are left untouched on info.
 func applyOverride(info *ChainInfo, sources *FieldSources, ov *ChainOverride) {
+	if ov.Enabled != nil {
+		info.Enabled = *ov.Enabled
+	}
 	if ov.ChainName != nil {
 		info.ChainName = *ov.ChainName
 		sources.Identity = SourceConfig
@@ -96,44 +97,51 @@ func applyOverride(info *ChainInfo, sources *FieldSources, ov *ChainOverride) {
 		info.BlockTime = *ov.BlockTime
 		sources.BlockTime = SourceConfig
 	}
-	if ov.Endpoints != nil {
-		if ov.Endpoints.GRPC != nil {
-			info.Endpoints.GRPC = stringsToEndpoints(ov.Endpoints.GRPC)
-			sources.Endpoints = SourceConfig
-		}
-		if ov.Endpoints.RPC != nil {
-			info.Endpoints.RPC = stringsToEndpoints(ov.Endpoints.RPC)
-			sources.Endpoints = SourceConfig
-		}
-		if ov.Endpoints.REST != nil {
-			info.Endpoints.REST = stringsToEndpoints(ov.Endpoints.REST)
-			sources.Endpoints = SourceConfig
-		}
+	applyEndpoints(info, sources, ov.Endpoints)
+	applyFeeTokens(info, sources, ov.FeeTokens)
+}
+
+func applyEndpoints(info *ChainInfo, sources *FieldSources, ov *EndpointsOverride) {
+	if ov == nil {
+		return
 	}
-	for _, ft := range ov.FeeTokens {
-		for i := range info.FeeTokens {
-			if info.FeeTokens[i].Denom != ft.Denom {
-				continue
-			}
-			if ft.LowGasPrice != nil {
-				if d, err := decimal.NewFromString(*ft.LowGasPrice); err == nil {
-					info.FeeTokens[i].LowGasPrice = d
-					sources.FeeTokens = SourceConfig
-				}
-			}
-			if ft.AverageGasPrice != nil {
-				if d, err := decimal.NewFromString(*ft.AverageGasPrice); err == nil {
-					info.FeeTokens[i].AverageGasPrice = d
-					sources.FeeTokens = SourceConfig
-				}
-			}
-			if ft.HighGasPrice != nil {
-				if d, err := decimal.NewFromString(*ft.HighGasPrice); err == nil {
-					info.FeeTokens[i].HighGasPrice = d
-					sources.FeeTokens = SourceConfig
-				}
-			}
+	if ov.GRPC != nil {
+		info.Endpoints.GRPC = stringsToEndpoints(ov.GRPC)
+		sources.Endpoints = SourceConfig
+	}
+	if ov.RPC != nil {
+		info.Endpoints.RPC = stringsToEndpoints(ov.RPC)
+		sources.Endpoints = SourceConfig
+	}
+	if ov.REST != nil {
+		info.Endpoints.REST = stringsToEndpoints(ov.REST)
+		sources.Endpoints = SourceConfig
+	}
+}
+
+func applyFeeTokens(info *ChainInfo, sources *FieldSources, overrides []FeeTokenOverride) {
+	for _, ov := range overrides {
+		idx := slices.IndexFunc(info.FeeTokens, func(ft FeeToken) bool { return ft.Denom == ov.Denom })
+		if idx < 0 {
+			continue
 		}
+		applyFeeToken(&info.FeeTokens[idx], &sources.FeeTokens, ov)
+	}
+}
+
+func applyFeeToken(ft *FeeToken, src *Source, ov FeeTokenOverride) {
+	applyDecimalField(&ft.LowGasPrice, src, ov.LowGasPrice)
+	applyDecimalField(&ft.AverageGasPrice, src, ov.AverageGasPrice)
+	applyDecimalField(&ft.HighGasPrice, src, ov.HighGasPrice)
+}
+
+func applyDecimalField(field *decimal.Decimal, src *Source, raw *string) {
+	if raw == nil {
+		return
+	}
+	if d, err := decimal.NewFromString(*raw); err == nil {
+		*field = d
+		*src = SourceConfig
 	}
 }
 

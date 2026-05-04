@@ -242,12 +242,6 @@ func (c *ChainsConfig) ToOverrideSet() (*chainregistry.OverrideSet, error) {
 			ChainName:    chain.ChainName,
 			Bech32Prefix: chain.Bech32Prefix,
 			Slip44:       chain.Slip44,
-			Drip: chainregistry.DripPolicy{
-				Anonymous:           chain.Drip.Anonymous,
-				Signed:              chain.Drip.Signed,
-				MaxPerAddressPerDay: chain.Drip.MaxPerAddressPerDay,
-				Memo:                chain.Drip.Memo,
-			},
 			Distributors: chain.Distributors,
 		}
 		if chain.NetworkType != nil {
@@ -295,6 +289,7 @@ func (c *ChainConfig) ToChainInfo() (*chainregistry.ChainInfo, error) {
 		ChainID:      c.ChainID,
 		Bech32Prefix: derefString(c.Bech32Prefix),
 		Slip44:       derefUint32(c.Slip44),
+		Enabled:      c.IsEnabled(),
 	}
 	if c.ChainName != nil {
 		info.ChainName = *c.ChainName
@@ -329,6 +324,19 @@ func (c *ChainConfig) ToChainInfo() (*chainregistry.ChainInfo, error) {
 		})
 	}
 	return info, nil
+}
+
+// EnabledRegistryChainIDs returns the chain IDs of all enabled, non-standalone chains.
+// These are the chains to fetch from the public registry on startup.
+func (c *ChainsConfig) EnabledRegistryChainIDs() []string {
+	var ids []string
+	for i := range c.Chains {
+		chain := &c.Chains[i]
+		if !chain.Standalone && chain.IsEnabled() {
+			ids = append(ids, chain.ChainID)
+		}
+	}
+	return ids
 }
 
 // ToStandaloneInfos converts all standalone chains into chainregistry.ChainInfo

@@ -13,12 +13,12 @@ import (
 	"github.com/cosmos/go-bip39"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	pourhttp "github.com/ny4rl4th0t3p/pour/internal/http"
 	"github.com/ny4rl4th0t3p/pour/internal/http/handlers"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
-	"github.com/ny4rl4th0t3p/pour/internal/tx"
 )
 
 var (
@@ -86,28 +86,26 @@ func (c *ServeCmd) Run() error {
 	}
 	limiter := ratelimit.New(db, rpw, window)
 
+	refreshInterval, err := chains.Registry.RefreshDuration()
+	if err != nil {
+		return err
+	}
+
+	mgr, err := chain.New(ctx, chain.Options{
+		Config:          chains,
+		GasCache:        gc,
+		RegistryBaseURL: chains.Registry.BaseURL,
+		RefreshInterval: refreshInterval,
+	})
+	if err != nil {
+		return err
+	}
+	defer mgr.Close()
+	mgr.StartRefreshLoop(ctx)
+
 	broadcasters := make(map[string]handlers.Broadcaster)
-	var clients []*tx.Client
-	defer func() {
-		for _, c := range clients {
-			c.Close()
-		}
-	}()
-	for i := range chains.Chains {
-		chain := &chains.Chains[i]
-		if !chain.IsEnabled() {
-			continue
-		}
-		info, err := chain.ToChainInfo()
-		if err != nil {
-			return err
-		}
-		client, err := tx.New(info, tx.Options{GasCache: gc})
-		if err != nil {
-			return fmt.Errorf("chain %q: tx client: %w", chain.ChainID, err)
-		}
-		clients = append(clients, client)
-		broadcasters[chain.ChainID] = client
+	for _, ch := range mgr.ListActive() {
+		broadcasters[ch.Info().ChainID] = ch.Client()
 	}
 
 	srv, err := pourhttp.New(pourhttp.Deps{
