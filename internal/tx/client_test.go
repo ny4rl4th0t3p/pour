@@ -7,12 +7,15 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/shopspring/decimal"
+
 	authv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/auth/v1beta1"
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/internal/tx/testdata/fakechain"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
-func newTestClient(t *testing.T, conn *grpc.ClientConn, chain ChainConfig) *Client {
+func newTestClient(t *testing.T, conn *grpc.ClientConn, chain *chainregistry.ChainInfo) *Client {
 	t.Helper()
 	return &Client{
 		chain:   chain,
@@ -38,11 +41,11 @@ func TestBuildAndBroadcast_happyPath(t *testing.T) {
 		ConfirmAfter:    0,
 	})
 
-	chain := ChainConfig{
+	chain := &chainregistry.ChainInfo{
 		ChainID:      "osmosis-1",
 		Bech32Prefix: "osmo",
 		Slip44:       118,
-		FeeTokens:    []FeeToken{{Denom: "uosmo", AverageGasPrice: "0.025"}},
+		FeeTokens:    []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
 	}
 
 	result, err := newTestClient(t, conn, chain).BuildAndBroadcast(t.Context(), SendRequest{
@@ -68,7 +71,7 @@ func TestBuildAndBroadcast_accountNotFound(t *testing.T) {
 		Address: "osmo1differentaddressthatwontmatch000000000",
 	})
 
-	chain := ChainConfig{
+	chain := &chainregistry.ChainInfo{
 		ChainID:      "osmosis-1",
 		Bech32Prefix: "osmo",
 		Slip44:       118,

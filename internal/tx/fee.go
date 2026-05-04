@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
 const (
@@ -34,7 +35,7 @@ var (
 func estimateFee(
 	ctx context.Context,
 	txSvc txv1beta1.ServiceClient,
-	chain ChainConfig,
+	chain *chainregistry.ChainInfo,
 	msgs []*anypb.Any,
 	req SendRequest,
 	logger *slog.Logger,
@@ -61,7 +62,7 @@ func estimateFee(
 		ft := chain.FeeTokens[0]
 		baseGas := decimal.NewFromInt(int64(defaultBaseGas + defaultGasPerOutput*uint64(len(msgs))))
 		gas := baseGas.Mul(gasAdjustCold).Ceil().BigInt().Uint64()
-		fee, err := calcFee(gas, ft.AverageGasPrice, ft.Denom)
+		fee, err := calcFee(gas, ft.AverageGasPrice.String(), ft.Denom)
 		if err == nil {
 			return Estimate{GasLimit: gas, Fee: fee}, nil
 		}
@@ -83,7 +84,12 @@ func estimateFee(
 
 // trySimulate calls Service/Simulate with a minimal placeholder tx.
 // Returns (estimate, true, nil) on success, (zero, false, nil) if unavailable.
-func trySimulate(ctx context.Context, txSvc txv1beta1.ServiceClient, chain ChainConfig, msgs []*anypb.Any) (Estimate, bool, error) {
+func trySimulate(
+	ctx context.Context,
+	txSvc txv1beta1.ServiceClient,
+	chain *chainregistry.ChainInfo,
+	msgs []*anypb.Any,
+) (Estimate, bool, error) {
 	body := &txv1beta1.TxBody{Messages: msgs}
 	bodyBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(body)
 	if err != nil {
@@ -117,7 +123,7 @@ func trySimulate(ctx context.Context, txSvc txv1beta1.ServiceClient, chain Chain
 	gasPriceStr := defaultGasPrice.String()
 	if len(chain.FeeTokens) > 0 {
 		denom = chain.FeeTokens[0].Denom
-		gasPriceStr = chain.FeeTokens[0].AverageGasPrice
+		gasPriceStr = chain.FeeTokens[0].AverageGasPrice.String()
 	}
 
 	fee, err := calcFee(gas, gasPriceStr, denom)

@@ -11,23 +11,6 @@ type Coin struct {
 // Coins is an ordered list of Coin.
 type Coins []Coin
 
-// FeeToken describes one of a chain's accepted fee tokens.
-type FeeToken struct {
-	Denom           string
-	AverageGasPrice string // decimal, e.g. "0.025"
-	LowGasPrice     string // floor used by gascache decay
-}
-
-// ChainConfig is the minimal chain configuration needed by the tx client.
-// GRPCEndpoint is host:port; port 443 implies TLS, otherwise insecure.
-type ChainConfig struct {
-	ChainID      string
-	GRPCEndpoint string
-	Bech32Prefix string
-	Slip44       uint32
-	FeeTokens    []FeeToken
-}
-
 // CachedEstimate holds empirically learned gas parameters for a chain.
 type CachedEstimate struct {
 	BaseGas        uint64

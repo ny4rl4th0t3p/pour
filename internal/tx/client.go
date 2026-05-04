@@ -15,6 +15,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/tx/internal/keys"
 	authv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/auth/v1beta1"
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
 // Options are optional parameters for New.
@@ -25,28 +26,32 @@ type Options struct {
 
 // Client is a single-chain tx client.
 type Client struct {
-	chain   ChainConfig
+	chain   *chainregistry.ChainInfo
 	conn    *grpc.ClientConn
 	txSvc   txv1beta1.ServiceClient
 	authSvc authv1beta1.QueryClient
 	opts    Options
 }
 
-// New dials the chain's gRPC endpoint and returns a ready Client.
+// New dials the chain's first gRPC endpoint and returns a ready Client.
 // Port 443 in the endpoint implies TLS; all other ports use plaintext.
-func New(chain ChainConfig, opts Options) (*Client, error) {
+func New(chain *chainregistry.ChainInfo, opts Options) (*Client, error) {
+	if len(chain.Endpoints.GRPC) == 0 {
+		return nil, fmt.Errorf("tx: chain %q: no gRPC endpoints configured", chain.ChainID)
+	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
 
+	endpoint := chain.Endpoints.GRPC[0].URL
 	creds := grpc.WithTransportCredentials(insecure.NewCredentials())
-	if strings.HasSuffix(chain.GRPCEndpoint, ":443") {
+	if strings.HasSuffix(endpoint, ":443") {
 		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}))
 	}
 
-	conn, err := grpc.NewClient(chain.GRPCEndpoint, creds)
+	conn, err := grpc.NewClient(endpoint, creds)
 	if err != nil {
-		return nil, fmt.Errorf("tx: dial %s: %w", chain.GRPCEndpoint, err)
+		return nil, fmt.Errorf("tx: dial %s: %w", endpoint, err)
 	}
 
 	return &Client{
