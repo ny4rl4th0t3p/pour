@@ -40,16 +40,16 @@ func TestClassify_KnownFields(t *testing.T) {
 		field string
 		want  FieldPolicy
 	}{
-		{"Endpoints.GRPC", FieldPolicyHotReload},
-		{"PrettyName", FieldPolicyHotReload},
-		{"FeeTokens.Display", FieldPolicyHotReload},
-		{"FeeTokens.AverageGasPrice", FieldPolicyWarn},
-		{"FeeTokens.LowGasPrice", FieldPolicyWarn},
-		{"FeeTokens.HighGasPrice", FieldPolicyWarn},
-		{"Bech32Prefix", FieldPolicyFreeze},
-		{"ChainID", FieldPolicyFreeze},
-		{"Slip44", FieldPolicyFreeze},
-		{"FeeTokens.Denom", FieldPolicyFreeze},
+		{FieldEndpointsGRPC, FieldPolicyHotReload},
+		{FieldPrettyName, FieldPolicyHotReload},
+		{FieldFeeTokensDisplay, FieldPolicyHotReload},
+		{FieldFeeTokensAvgGasPrice, FieldPolicyWarn},
+		{FieldFeeTokensLowGasPrice, FieldPolicyWarn},
+		{FieldFeeTokensHighGasPrice, FieldPolicyWarn},
+		{FieldBech32Prefix, FieldPolicyFreeze},
+		{FieldChainID, FieldPolicyFreeze},
+		{FieldSlip44, FieldPolicyFreeze},
+		{FieldFeeTokensDenom, FieldPolicyFreeze},
 	}
 	for _, tc := range cases {
 		got := classify(tc.field)

@@ -184,7 +184,7 @@ func TestUpdateLive_FreezeFieldEnqueuesPending(t *testing.T) {
 	pending := s.Pending()
 	found := false
 	for _, pc := range pending {
-		if pc.ChainID == "test-beta-1" && pc.Field == "Bech32Prefix" {
+		if pc.ChainID == "test-beta-1" && pc.Field == FieldBech32Prefix {
 			found = true
 			if pc.NewValue != "beta2" {
 				t.Errorf("PendingChange.NewValue: got %v, want %q", pc.NewValue, "beta2")
@@ -201,7 +201,7 @@ func TestAccept_AppliesAndRemovesPending(t *testing.T) {
 	snap := parseSnap(t, readTestFile(t, "testdata/snapshots/live-v1.json"))
 	s.UpdateLive(snap) //nolint:errcheck // ChangeSet return value not needed in this test
 
-	if err := s.Accept("test-beta-1", "Bech32Prefix"); err != nil {
+	if err := s.Accept("test-beta-1", FieldBech32Prefix); err != nil {
 		t.Fatalf("Accept: %v", err)
 	}
 	info, _ := s.Get("test-beta-1")
@@ -209,7 +209,7 @@ func TestAccept_AppliesAndRemovesPending(t *testing.T) {
 		t.Errorf("after Accept, Bech32Prefix = %q, want %q", info.Bech32Prefix, "beta2")
 	}
 	for _, pc := range s.Pending() {
-		if pc.ChainID == "test-beta-1" && pc.Field == "Bech32Prefix" {
+		if pc.ChainID == "test-beta-1" && pc.Field == FieldBech32Prefix {
 			t.Error("pending change should be removed after Accept")
 		}
 	}
@@ -217,7 +217,7 @@ func TestAccept_AppliesAndRemovesPending(t *testing.T) {
 
 func TestAccept_NoPendingChange(t *testing.T) {
 	s := newStoreV1(t)
-	err := s.Accept("test-alpha-1", "Bech32Prefix")
+	err := s.Accept("test-alpha-1", FieldBech32Prefix)
 	if err == nil {
 		t.Fatal("expected error for non-existent pending change")
 	}

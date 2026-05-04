@@ -34,6 +34,7 @@ test-smoke:
 
 ## Run golangci-lint.
 lint:
+	golangci-lint cache clean
 	golangci-lint run
 
 ## Generate Go bindings from vendored .proto files.

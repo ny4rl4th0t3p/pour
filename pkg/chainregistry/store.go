@@ -229,11 +229,11 @@ func (s *Store) SetOverrides(ov *OverrideSet) {
 // classifiableFields is the ordered list of field paths that UpdateLive diffs
 // when applying policy to live registry updates.
 var classifiableFields = []string{
-	"ChainID", "ChainName", "NetworkType", "PrettyName",
-	"Bech32Prefix", "Slip44", "KeyAlgo",
-	"Endpoints.GRPC", "Endpoints.RPC", "Endpoints.REST",
-	"BlockTime",
-	"FeeTokens.Denom",
-	"FeeTokens.LowGasPrice", "FeeTokens.AverageGasPrice", "FeeTokens.HighGasPrice",
-	"FeeTokens.Display", "FeeTokens.Exponent",
+	FieldChainID, FieldChainName, FieldNetworkType, FieldPrettyName,
+	FieldBech32Prefix, FieldSlip44, FieldKeyAlgo,
+	FieldEndpointsGRPC, FieldEndpointsRPC, FieldEndpointsREST,
+	FieldBlockTime,
+	FieldFeeTokensDenom,
+	FieldFeeTokensLowGasPrice, FieldFeeTokensAvgGasPrice, FieldFeeTokensHighGasPrice,
+	FieldFeeTokensDisplay, FieldFeeTokensExponent,
 }

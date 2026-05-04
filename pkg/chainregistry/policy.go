@@ -2,6 +2,29 @@ package chainregistry
 
 import "time"
 
+// Field name constants used in fieldValues, applyAcceptedField, defaultFieldPolicy,
+// and classifiableFields. Exported so internal/chain can reference them when logging
+// ChangeSets without importing string literals.
+const (
+	FieldChainID               = "ChainID"
+	FieldChainName             = "ChainName"
+	FieldNetworkType           = "NetworkType"
+	FieldPrettyName            = "PrettyName"
+	FieldBech32Prefix          = "Bech32Prefix"
+	FieldSlip44                = "Slip44"
+	FieldKeyAlgo               = "KeyAlgo"
+	FieldEndpointsGRPC         = "Endpoints.GRPC"
+	FieldEndpointsRPC          = "Endpoints.RPC"
+	FieldEndpointsREST         = "Endpoints.REST"
+	FieldBlockTime             = "BlockTime"
+	FieldFeeTokensDenom        = "FeeTokens.Denom"           //nolint:gosec // registry field path, not a credential
+	FieldFeeTokensLowGasPrice  = "FeeTokens.LowGasPrice"     //nolint:gosec // registry field path, not a credential
+	FieldFeeTokensAvgGasPrice  = "FeeTokens.AverageGasPrice" //nolint:gosec // registry field path, not a credential
+	FieldFeeTokensHighGasPrice = "FeeTokens.HighGasPrice"    //nolint:gosec // registry field path, not a credential
+	FieldFeeTokensDisplay      = "FeeTokens.Display"         //nolint:gosec // registry field path, not a credential
+	FieldFeeTokensExponent     = "FeeTokens.Exponent"        //nolint:gosec // registry field path, not a credential
+)
+
 // FieldPolicy classifies how a live registry update to a field is handled.
 type FieldPolicy int
 
@@ -23,35 +46,35 @@ const (
 var defaultFieldPolicy = map[string]FieldPolicy{
 	// Identity-affecting fields: changing these can break address derivation or
 	// transaction signing — require explicit operator acknowledgment.
-	"ChainID":      FieldPolicyFreeze,
-	"ChainName":    FieldPolicyFreeze,
-	"NetworkType":  FieldPolicyFreeze,
-	"Bech32Prefix": FieldPolicyFreeze,
-	"Slip44":       FieldPolicyFreeze,
-	"KeyAlgo":      FieldPolicyFreeze,
+	FieldChainID:      FieldPolicyFreeze,
+	FieldChainName:    FieldPolicyFreeze,
+	FieldNetworkType:  FieldPolicyFreeze,
+	FieldBech32Prefix: FieldPolicyFreeze,
+	FieldSlip44:       FieldPolicyFreeze,
+	FieldKeyAlgo:      FieldPolicyFreeze,
 
 	// FeeToken denom change is a hard event: existing gas-cache entries become
 	// stale and transactions built with the old denom will be rejected.
-	"FeeTokens.Denom": FieldPolicyFreeze,
+	FieldFeeTokensDenom: FieldPolicyFreeze,
 
 	// Gas price changes are operationally significant but not breaking — apply
 	// immediately and warn so operators can review.
-	"FeeTokens.LowGasPrice":     FieldPolicyWarn,
-	"FeeTokens.AverageGasPrice": FieldPolicyWarn,
-	"FeeTokens.HighGasPrice":    FieldPolicyWarn,
+	FieldFeeTokensLowGasPrice:  FieldPolicyWarn,
+	FieldFeeTokensAvgGasPrice:  FieldPolicyWarn,
+	FieldFeeTokensHighGasPrice: FieldPolicyWarn,
 
 	// Display metadata and exponent are purely informational.
-	"FeeTokens.Display":  FieldPolicyHotReload,
-	"FeeTokens.Exponent": FieldPolicyHotReload,
+	FieldFeeTokensDisplay:  FieldPolicyHotReload,
+	FieldFeeTokensExponent: FieldPolicyHotReload,
 
 	// Endpoint list changes are routine: registries update these frequently.
-	"Endpoints.GRPC": FieldPolicyHotReload,
-	"Endpoints.RPC":  FieldPolicyHotReload,
-	"Endpoints.REST": FieldPolicyHotReload,
+	FieldEndpointsGRPC: FieldPolicyHotReload,
+	FieldEndpointsRPC:  FieldPolicyHotReload,
+	FieldEndpointsREST: FieldPolicyHotReload,
 
 	// Cosmetic and operational metadata.
-	"PrettyName": FieldPolicyHotReload,
-	"BlockTime":  FieldPolicyHotReload,
+	FieldPrettyName: FieldPolicyHotReload,
+	FieldBlockTime:  FieldPolicyHotReload,
 }
 
 // classify returns the policy for a named field path (e.g. "FeeTokens.Denom").

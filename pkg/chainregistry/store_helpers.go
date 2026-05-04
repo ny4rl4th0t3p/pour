@@ -10,47 +10,47 @@ import (
 // HotReload and Warn changes for the ChangeSet.
 func fieldValues(old, cur *ChainInfo, field string) (oldVal, newVal any, changed bool) {
 	switch field {
-	case "ChainID":
+	case FieldChainID:
 		return old.ChainID, cur.ChainID, old.ChainID != cur.ChainID
-	case "ChainName":
+	case FieldChainName:
 		return old.ChainName, cur.ChainName, old.ChainName != cur.ChainName
-	case "NetworkType":
+	case FieldNetworkType:
 		return old.NetworkType, cur.NetworkType, old.NetworkType != cur.NetworkType
-	case "PrettyName":
+	case FieldPrettyName:
 		return old.PrettyName, cur.PrettyName, old.PrettyName != cur.PrettyName
-	case "Bech32Prefix":
+	case FieldBech32Prefix:
 		return old.Bech32Prefix, cur.Bech32Prefix, old.Bech32Prefix != cur.Bech32Prefix
-	case "Slip44":
+	case FieldSlip44:
 		return old.Slip44, cur.Slip44, old.Slip44 != cur.Slip44
-	case "KeyAlgo":
+	case FieldKeyAlgo:
 		return old.KeyAlgo, cur.KeyAlgo, old.KeyAlgo != cur.KeyAlgo
-	case "Endpoints.GRPC":
+	case FieldEndpointsGRPC:
 		eq := reflect.DeepEqual(old.Endpoints.GRPC, cur.Endpoints.GRPC)
 		return old.Endpoints.GRPC, cur.Endpoints.GRPC, !eq
-	case "Endpoints.RPC":
+	case FieldEndpointsRPC:
 		eq := reflect.DeepEqual(old.Endpoints.RPC, cur.Endpoints.RPC)
 		return old.Endpoints.RPC, cur.Endpoints.RPC, !eq
-	case "Endpoints.REST":
+	case FieldEndpointsREST:
 		eq := reflect.DeepEqual(old.Endpoints.REST, cur.Endpoints.REST)
 		return old.Endpoints.REST, cur.Endpoints.REST, !eq
-	case "BlockTime":
+	case FieldBlockTime:
 		return old.BlockTime, cur.BlockTime, old.BlockTime != cur.BlockTime
-	case "FeeTokens.Denom":
+	case FieldFeeTokensDenom:
 		ods, nds := feeTokenDenoms(old.FeeTokens), feeTokenDenoms(cur.FeeTokens)
 		return old.FeeTokens, cur.FeeTokens, !reflect.DeepEqual(ods, nds)
-	case "FeeTokens.LowGasPrice":
+	case FieldFeeTokensLowGasPrice:
 		os, ns := feeTokenGasSummary(old.FeeTokens, "low"), feeTokenGasSummary(cur.FeeTokens, "low")
 		return os, ns, os != ns
-	case "FeeTokens.AverageGasPrice":
+	case FieldFeeTokensAvgGasPrice:
 		os, ns := feeTokenGasSummary(old.FeeTokens, "avg"), feeTokenGasSummary(cur.FeeTokens, "avg")
 		return os, ns, os != ns
-	case "FeeTokens.HighGasPrice":
+	case FieldFeeTokensHighGasPrice:
 		os, ns := feeTokenGasSummary(old.FeeTokens, "high"), feeTokenGasSummary(cur.FeeTokens, "high")
 		return os, ns, os != ns
-	case "FeeTokens.Display":
+	case FieldFeeTokensDisplay:
 		os, ns := feeTokenDisplaySummary(old.FeeTokens), feeTokenDisplaySummary(cur.FeeTokens)
 		return os, ns, os != ns
-	case "FeeTokens.Exponent":
+	case FieldFeeTokensExponent:
 		eq := reflect.DeepEqual(old.FeeTokens, cur.FeeTokens)
 		return old.FeeTokens, cur.FeeTokens, !eq
 	}
@@ -84,37 +84,37 @@ func feeTokenDisplaySummary(fts []FeeToken) string {
 // value into info. Used by Accept to apply the accepted value immediately.
 func applyAcceptedField(info *ChainInfo, field string, newValue any) error {
 	switch field {
-	case "ChainID":
+	case FieldChainID:
 		if v, ok := newValue.(string); ok {
 			info.ChainID = v
 		}
-	case "ChainName":
+	case FieldChainName:
 		if v, ok := newValue.(string); ok {
 			info.ChainName = v
 		}
-	case "NetworkType":
+	case FieldNetworkType:
 		switch v := newValue.(type) {
 		case NetworkType:
 			info.NetworkType = v
 		case string:
 			info.NetworkType = NetworkType(v)
 		}
-	case "Bech32Prefix":
+	case FieldBech32Prefix:
 		if v, ok := newValue.(string); ok {
 			info.Bech32Prefix = v
 		}
-	case "Slip44":
+	case FieldSlip44:
 		if v, ok := newValue.(uint32); ok {
 			info.Slip44 = v
 		}
-	case "KeyAlgo":
+	case FieldKeyAlgo:
 		switch v := newValue.(type) {
 		case KeyAlgo:
 			info.KeyAlgo = v
 		case string:
 			info.KeyAlgo = KeyAlgo(v)
 		}
-	case "FeeTokens.Denom":
+	case FieldFeeTokensDenom:
 		if v, ok := newValue.([]FeeToken); ok {
 			info.FeeTokens = v
 		}
