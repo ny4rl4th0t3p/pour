@@ -104,9 +104,10 @@ func (c *ServeCmd) Run() error {
 	defer mgr.Close()
 	mgr.StartRefreshLoop(ctx)
 
-	broadcasters := make(map[string]handlers.Broadcaster)
-	for _, ch := range mgr.ListActive() {
-		broadcasters[ch.Info().ChainID] = ch.Client()
+	rawClients := mgr.Clients()
+	broadcasters := make(map[string]handlers.Broadcaster, len(rawClients))
+	for id, c := range rawClients {
+		broadcasters[id] = c
 	}
 
 	tokenStore, err := admin.NewTokenStore()
@@ -121,15 +122,16 @@ func (c *ServeCmd) Run() error {
 	adminRouter := admin.Middleware(tokenStore, chains.Admin.AllowedCIDRs)(adminHandler.Router())
 
 	srv, err := pourhttp.New(pourhttp.Deps{
-		ChainsConfig: chains,
-		Serve:        &c.ServeConfig,
-		Store:        db,
-		Limiter:      limiter,
-		Broadcasters: broadcasters,
-		GasCache:     gc,
-		AdminHandler: adminRouter,
-		Mnemonic:     mnemonic,
-		Version:      version,
+		Manager:         mgr,
+		RefreshInterval: refreshInterval,
+		Serve:           &c.ServeConfig,
+		Store:           db,
+		Limiter:         limiter,
+		Broadcasters:    broadcasters,
+		GasCache:        gc,
+		AdminHandler:    adminRouter,
+		Mnemonic:        mnemonic,
+		Version:         version,
 	})
 	if err != nil {
 		return err
