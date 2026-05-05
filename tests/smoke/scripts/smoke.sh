@@ -86,23 +86,23 @@ RESP=$(curl -sf -X POST "$BASE/v1/pour" \
   -H 'Content-Type: application/json' \
   -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}")
 echo "    $RESP"
-echo "$RESP" | grep -q '"tx_hash"'
-echo "$RESP" | grep -q '"status":"confirmed"'
+echo "$RESP" | grep -q '"status"'
+echo "$RESP" | grep -q '"drip_id"'
 echo "$RESP" | grep -q "\"amount\":\"$DRIP\""
 
-# The faucet waits for tx confirmation before returning, but the REST API
-# may lag one block behind the confirmed state. Give it a moment.
-sleep 3
-
-echo "==> recipient balance (post-pour)"
-POST_BAL=$(stake_balance "$RECIPIENT")
-POST_BAL=${POST_BAL:-0}
-echo "    recipient post: ${POST_BAL}stake"
+# Wait for the drip to settle: batch window fires (≤5s) then tx confirms.
 EXPECTED_POST=$((PRE_BAL + 1000000))
-if [ "$POST_BAL" -ne "$EXPECTED_POST" ]; then
-  echo "FAIL: expected ${EXPECTED_POST}stake, got ${POST_BAL}stake"
-  exit 1
-fi
+echo "==> waiting for recipient balance to update after pour"
+i=0
+while [ "$i" -lt 30 ]; do
+  POST_BAL=$(stake_balance "$RECIPIENT")
+  POST_BAL=${POST_BAL:-0}
+  [ "$POST_BAL" -eq "$EXPECTED_POST" ] && break
+  i=$((i + 1))
+  [ "$i" -eq 30 ] && { echo "TIMEOUT: balance never reached ${EXPECTED_POST}stake (last: ${POST_BAL}stake)"; exit 1; }
+  sleep 1
+done
+echo "    recipient post: ${POST_BAL}stake"
 
 echo "==> /v1/info"
 curl -sf "$BASE/v1/info" | grep -q '"version"'
