@@ -81,7 +81,9 @@ func (c *Cache) Lookup(ctx context.Context, chainID, msgType string) (*tx.Cached
 // so that fee estimation uses base_gas alone.
 // For msgType="multisend": multisend_gas_per_output tracks gasUsed/outputCount, converging
 // to the marginal per-output cost for MsgMultiSend. Both are stored in the same row.
-func (c *Cache) RecordSuccess(ctx context.Context, chainID, msgType string, gasUsed uint64, outputCount int, feeDenom, gasPriceAmount string) error {
+func (c *Cache) RecordSuccess(
+	ctx context.Context, chainID, msgType string, gasUsed uint64, outputCount int, feeDenom, gasPriceAmount string,
+) error {
 	now := time.Now().Unix()
 
 	price, err := decimal.NewFromString(gasPriceAmount)

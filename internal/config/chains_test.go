@@ -538,8 +538,8 @@ func TestBatchWindowDuration_negative(t *testing.T) {
 
 func TestMaxRecipientsPerBatchOrDefault_zero(t *testing.T) {
 	c := &ChainConfig{}
-	if got := c.MaxRecipientsPerBatchOrDefault(); got != 25 {
-		t.Errorf("zero: got %d, want 25", got)
+	if got := c.MaxRecipientsPerBatchOrDefault(); got != DefaultMaxRecipientsPerBatch {
+		t.Errorf("zero: got %d, want %d", got, DefaultMaxRecipientsPerBatch)
 	}
 }
 
@@ -554,8 +554,8 @@ func TestMaxRecipientsPerBatchOrDefault_explicit(t *testing.T) {
 
 func TestMaxQueueDepthOrDefault_zero(t *testing.T) {
 	c := &ChainConfig{}
-	if got := c.MaxQueueDepthOrDefault(); got != 500 {
-		t.Errorf("zero: got %d, want 500", got)
+	if got := c.MaxQueueDepthOrDefault(); got != DefaultMaxQueueDepth {
+		t.Errorf("zero: got %d, want %d", got, DefaultMaxQueueDepth)
 	}
 }
 

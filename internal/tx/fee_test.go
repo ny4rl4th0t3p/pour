@@ -128,8 +128,8 @@ func (s *stubCache) Lookup(_ context.Context, _, _ string) (*CachedEstimate, boo
 	return s.estimate, true
 }
 
-func (s *stubCache) RecordSuccess(_ context.Context, _, _ string, _ uint64, _ int, _, _ string) error {
+func (*stubCache) RecordSuccess(_ context.Context, _, _ string, _ uint64, _ int, _, _ string) error {
 	return nil
 }
 
-func (s *stubCache) RecordFailure(_ context.Context, _, _, _ string) error { return nil }
+func (*stubCache) RecordFailure(_ context.Context, _, _, _ string) error { return nil }
