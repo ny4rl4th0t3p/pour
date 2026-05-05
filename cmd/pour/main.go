@@ -120,6 +120,7 @@ func (c *ServeCmd) Run() error {
 	adminHandler := admin.New(admin.Deps{
 		RegStore:   mgr.Store(),
 		Manager:    mgr,
+		GasCache:   gc,
 		ConfigPath: c.ConfigFile,
 	})
 	adminRouter := admin.Middleware(tokenStore, chains.Admin.AllowedCIDRs)(adminHandler.Router())
