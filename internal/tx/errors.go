@@ -9,15 +9,16 @@ import (
 )
 
 var (
-	ErrAccountNotFound    = errors.New("tx: account not found")
-	ErrSequenceMismatch   = errors.New("tx: sequence mismatch")
-	ErrInsufficientFee    = errors.New("tx: insufficient fee")
-	ErrInsufficientGas    = errors.New("tx: insufficient gas")
-	ErrInsufficientFunds  = errors.New("tx: insufficient funds")
-	ErrChainUnreachable   = errors.New("tx: chain unreachable")
-	ErrSimulationFailed   = errors.New("tx: simulation failed")
-	ErrBroadcastTimeout   = errors.New("tx: broadcast timeout")
-	ErrUnknownAccountType = errors.New("tx: unknown account type")
+	ErrAccountNotFound     = errors.New("tx: account not found")
+	ErrSequenceMismatch    = errors.New("tx: sequence mismatch")
+	ErrInsufficientFee     = errors.New("tx: insufficient fee")
+	ErrInsufficientGas     = errors.New("tx: insufficient gas")
+	ErrInsufficientFunds   = errors.New("tx: insufficient funds")
+	ErrChainUnreachable    = errors.New("tx: chain unreachable")
+	ErrSimulationFailed    = errors.New("tx: simulation failed")
+	ErrBroadcastTimeout    = errors.New("tx: broadcast timeout")
+	ErrUnknownAccountType  = errors.New("tx: unknown account type")
+	ErrNoEndpointAvailable = errors.New("tx: no endpoint available")
 )
 
 // ABCI error codes from the Cosmos SDK.
