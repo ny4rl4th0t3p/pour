@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/store"
+	"github.com/ny4rl4th0t3p/pour/internal/tx"
 )
 
 func newTestCacheWithPrice(t *testing.T, price string) *Cache {
 	t.Helper()
 	c := newTestCache(t)
-	if err := c.RecordSuccess(t.Context(), "osmosis-1", 150_000, "uosmo", price); err != nil {
+	if err := c.RecordSuccess(t.Context(), "osmosis-1", tx.MsgTypeSend, 150_000, 1, "uosmo", price); err != nil {
 		t.Fatalf("RecordSuccess: %v", err)
 	}
 	return c
@@ -20,7 +21,7 @@ func newTestCacheWithPrice(t *testing.T, price string) *Cache {
 
 func currentPrice(t *testing.T, c *Cache) string {
 	t.Helper()
-	est, ok := c.Lookup(t.Context(), "osmosis-1")
+	est, ok := c.Lookup(t.Context(), "osmosis-1", tx.MsgTypeSend)
 	if !ok {
 		t.Fatalf("no cache entry for osmosis-1")
 	}
