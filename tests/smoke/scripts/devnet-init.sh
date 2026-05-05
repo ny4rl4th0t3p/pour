@@ -21,11 +21,19 @@ printf '%s\n' "$MNEMONIC" | \
 
 FAUCET_ADDR=$(simd keys show "$KEY_NAME" -a --keyring-backend test --home "$SIMD_HOME")
 
-# Derive recipient at index 1 (no genesis funding) and expose address to the smoke container.
-printf '%s\n' "$MNEMONIC" | \
-  simd keys add recipient --recover --keyring-backend test --home "$SIMD_HOME" --index 1
-RECIPIENT_ADDR=$(simd keys show recipient -a --keyring-backend test --home "$SIMD_HOME")
 mkdir -p "$STATE_DIR"
+
+# Derive distributor at index 1 — pour uses this key to send drips.
+# Expose address so the smoke script can poll for the refill from the holder.
+printf '%s\n' "$MNEMONIC" | \
+  simd keys add distributor --recover --keyring-backend test --home "$SIMD_HOME" --index 1
+DISTRIBUTOR_ADDR=$(simd keys show distributor -a --keyring-backend test --home "$SIMD_HOME")
+printf '%s' "$DISTRIBUTOR_ADDR" > "$STATE_DIR/distributor_addr"
+
+# Derive recipient at index 2 (no genesis funding, not a distributor).
+printf '%s\n' "$MNEMONIC" | \
+  simd keys add recipient --recover --keyring-backend test --home "$SIMD_HOME" --index 2
+RECIPIENT_ADDR=$(simd keys show recipient -a --keyring-backend test --home "$SIMD_HOME")
 printf '%s' "$RECIPIENT_ADDR" > "$STATE_DIR/recipient_addr"
 
 simd genesis add-genesis-account "$FAUCET_ADDR" "10000000000${DENOM}" --home "$SIMD_HOME"

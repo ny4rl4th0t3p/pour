@@ -19,18 +19,20 @@ stake_balance() {
     || true
 }
 
-echo "==> waiting for recipient address from chain init"
+echo "==> waiting for addresses from chain init"
 i=0
 while [ "$i" -lt 60 ]; do
-  [ -f /state/recipient_addr ] && break
+  [ -f /state/recipient_addr ] && [ -f /state/distributor_addr ] && break
   i=$((i + 1))
-  [ "$i" -eq 60 ] && { echo "TIMEOUT: recipient address file not written by chain init"; exit 1; }
+  [ "$i" -eq 60 ] && { echo "TIMEOUT: address files not written by chain init"; exit 1; }
   sleep 1
 done
+DISTRIBUTOR=$(cat /state/distributor_addr)
 RECIPIENT=$(cat /state/recipient_addr)
-echo "    recipient: $RECIPIENT"
-if [ "$RECIPIENT" = "$FAUCET_ADDR" ]; then
-  echo "FAIL: recipient address is the same as the faucet address"
+echo "    distributor: $DISTRIBUTOR"
+echo "    recipient:   $RECIPIENT"
+if [ "$RECIPIENT" = "$FAUCET_ADDR" ] || [ "$RECIPIENT" = "$DISTRIBUTOR" ]; then
+  echo "FAIL: recipient address collides with faucet or distributor"
   exit 1
 fi
 
@@ -62,6 +64,17 @@ if [ -z "$FAUCET_BAL" ] || [ "$FAUCET_BAL" -le 1000000 ]; then
   echo "FAIL: faucet balance insufficient (${FAUCET_BAL}stake)"
   exit 1
 fi
+
+echo "==> waiting for distributor refill (refill loop seeds distributor from holder at startup)"
+i=0
+while [ "$i" -lt 30 ]; do
+  DIST_BAL=$(stake_balance "$DISTRIBUTOR")
+  [ -n "$DIST_BAL" ] && [ "$DIST_BAL" -gt 0 ] && break
+  i=$((i + 1))
+  [ "$i" -eq 30 ] && { echo "TIMEOUT: distributor balance never became nonzero"; exit 1; }
+  sleep 2
+done
+echo "    distributor: ${DIST_BAL}stake"
 
 echo "==> recipient balance (pre-pour)"
 PRE_BAL=$(stake_balance "$RECIPIENT")
