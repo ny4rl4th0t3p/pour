@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
@@ -17,6 +18,11 @@ type Broadcaster interface {
 	BuildAndBroadcast(ctx context.Context, req tx.SendRequest) (*tx.BroadcastResult, error)
 }
 
+// ChainPourer abstracts chain.Manager for routing requests to the batch pool.
+type ChainPourer interface {
+	Pour(chainID string, req batch.Request) error
+}
+
 // RateLimiter abstracts *ratelimit.Limiter for handler testability.
 type RateLimiter interface {
 	Check(ctx context.Context, ip, chainID string) error
@@ -25,12 +31,14 @@ type RateLimiter interface {
 // DripStore abstracts store.Store drip writes for handler testability.
 type DripStore interface {
 	RecordDrip(ctx context.Context, d store.DripRecord) (int64, error)
+	UpdateDrip(ctx context.Context, id int64, status, txHash string, completedAt int64) error
 }
 
 // Deps holds all dependencies for the handler set.
 type Deps struct {
 	Source              chain.ChainSource
 	RegistryRefreshMode string
+	Pourer              ChainPourer
 	Broadcasters        map[string]Broadcaster
 	Limiter             RateLimiter
 	DripStore           DripStore
@@ -41,6 +49,7 @@ type Deps struct {
 type Handler struct {
 	source              chain.ChainSource
 	registryRefreshMode string
+	pourer              ChainPourer
 	broadcasters        map[string]Broadcaster
 	limiter             RateLimiter
 	dripStore           DripStore
@@ -52,6 +61,7 @@ func New(deps Deps) *Handler {
 	return &Handler{
 		source:              deps.Source,
 		registryRefreshMode: deps.RegistryRefreshMode,
+		pourer:              deps.Pourer,
 		broadcasters:        deps.Broadcasters,
 		limiter:             deps.Limiter,
 		dripStore:           deps.DripStore,

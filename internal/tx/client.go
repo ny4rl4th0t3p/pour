@@ -270,7 +270,11 @@ func (c *Client) recordSuccess(ctx context.Context, msgType string, gasUsed uint
 	if c.opts.GasCache == nil || gasUsed == 0 {
 		return
 	}
-	_ = c.opts.GasCache.RecordSuccess(ctx, c.chain.ChainID, msgType, gasUsed, outputCount, est.Fee.Denom, est.GasPriceAmount)
+	if err := c.opts.GasCache.RecordSuccess(
+		ctx, c.chain.ChainID, msgType, gasUsed, outputCount, est.Fee.Denom, est.GasPriceAmount,
+	); err != nil {
+		slog.ErrorContext(ctx, "tx: record gas success", "chain", c.chain.ChainID, "error", err)
+	}
 }
 
 func (c *Client) recordFailure(ctx context.Context, msgType string, err error) {
@@ -283,5 +287,7 @@ func (c *Client) recordFailure(ctx context.Context, msgType string, err error) {
 	} else if errors.Is(err, ErrInsufficientGas) {
 		reason = "out_of_gas"
 	}
-	_ = c.opts.GasCache.RecordFailure(ctx, c.chain.ChainID, msgType, reason)
+	if err := c.opts.GasCache.RecordFailure(ctx, c.chain.ChainID, msgType, reason); err != nil {
+		slog.ErrorContext(ctx, "tx: record gas failure", "chain", c.chain.ChainID, "error", err)
+	}
 }

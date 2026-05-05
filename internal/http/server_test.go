@@ -55,6 +55,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 				Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
 				FeeTokens:    []config.FeeTokenConfig{{Denom: "uosmo"}},
 				Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
+				BatchWindow:  "0", // sync mode so tests use the injected broadcaster
 			},
 			{
 				ChainID:      "cosmos-1",
@@ -65,6 +66,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 				Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
 				FeeTokens:    []config.FeeTokenConfig{{Denom: "uatom"}},
 				Drip:         config.DripConfig{Anonymous: "1000000uatom"},
+				BatchWindow:  "0", // sync mode so tests use the injected broadcaster
 			},
 		},
 	}
@@ -114,6 +116,7 @@ func newTestSrv(t *testing.T) *httptest.Server {
 			Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
 			FeeTokens:    []config.FeeTokenConfig{{Denom: "uosmo"}},
 			Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
+			BatchWindow:  "0", // sync mode so tests use the injected broadcaster
 		}},
 	}
 	mgr, err := chain.New(t.Context(), chain.Options{

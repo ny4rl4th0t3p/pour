@@ -61,3 +61,46 @@ func TestRecordDrip(t *testing.T) {
 		t.Errorf("Status: got %q, want %q", got.Status, rec.Status)
 	}
 }
+
+func TestUpdateDrip(t *testing.T) {
+	s, err := New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	now := time.Now().Unix()
+	id, err := s.RecordDrip(t.Context(), DripRecord{
+		ChainID:     "test-1",
+		Address:     "cosmos1abc",
+		Coins:       "1000000stake",
+		Status:      "queued",
+		RequestedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("RecordDrip: %v", err)
+	}
+
+	completedAt := now + 5
+	if err := s.UpdateDrip(t.Context(), id, "confirmed", "NEWTXHASH", completedAt); err != nil {
+		t.Fatalf("UpdateDrip: %v", err)
+	}
+
+	var status, txHash string
+	var gotCompleted int64
+	err = s.db.QueryRowContext(context.Background(),
+		`SELECT status, tx_hash, completed_at FROM drips WHERE id = ?`, id,
+	).Scan(&status, &txHash, &gotCompleted)
+	if err != nil {
+		t.Fatalf("query back: %v", err)
+	}
+	if status != "confirmed" {
+		t.Errorf("status: got %q, want confirmed", status)
+	}
+	if txHash != "NEWTXHASH" {
+		t.Errorf("tx_hash: got %q, want NEWTXHASH", txHash)
+	}
+	if gotCompleted != completedAt {
+		t.Errorf("completed_at: got %d, want %d", gotCompleted, completedAt)
+	}
+}

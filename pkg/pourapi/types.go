@@ -1,5 +1,12 @@
 package pourapi
 
+// PourStatus values for POST /v1/pour responses.
+const (
+	StatusQueued    = "queued"
+	StatusConfirmed = "confirmed"
+	StatusFailed    = "failed"
+)
+
 // PourRequest is the body for POST /v1/pour.
 type PourRequest struct {
 	ChainID string `json:"chain_id"`
@@ -7,11 +14,13 @@ type PourRequest struct {
 }
 
 // PourResponse is returned on a successful POST /v1/pour.
+// Status is "queued" (async batch path) or "confirmed" (sync path).
+// TxHash is omitted when status is "queued".
 type PourResponse struct {
 	DripID int64  `json:"drip_id"`
-	Status string `json:"status"` // "confirmed"
+	Status string `json:"status"`
 	Amount string `json:"amount"` // e.g. "1000000uosmo"
-	TxHash string `json:"tx_hash"`
+	TxHash string `json:"tx_hash,omitempty"`
 }
 
 // InfoResponse is returned by GET /v1/info.

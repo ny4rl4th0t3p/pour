@@ -47,6 +47,7 @@ func New(deps Deps) (*Server, error) {
 	h := handlers.New(handlers.Deps{
 		Source:              deps.Manager,
 		RegistryRefreshMode: refreshMode,
+		Pourer:              deps.Manager,
 		Broadcasters:        deps.Broadcasters,
 		Limiter:             deps.Limiter,
 		DripStore:           deps.Store,

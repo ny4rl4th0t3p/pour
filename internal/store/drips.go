@@ -17,7 +17,7 @@ type DripRecord struct {
 	CompletedAt int64  // Unix seconds
 }
 
-// RecordDrip inserts a confirmed drip into the audit log and returns the new row id.
+// RecordDrip inserts a drip record into the audit log and returns the new row id.
 func (s *Store) RecordDrip(ctx context.Context, d DripRecord) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO drips
@@ -32,4 +32,16 @@ func (s *Store) RecordDrip(ctx context.Context, d DripRecord) (int64, error) {
 		return 0, fmt.Errorf("store: last insert id: %w", err)
 	}
 	return id, nil
+}
+
+// UpdateDrip sets status, tx_hash, and completed_at for the drip with the given id.
+// txHash may be empty for failed drips.
+func (s *Store) UpdateDrip(ctx context.Context, id int64, status, txHash string, completedAt int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE drips SET status = ?, tx_hash = ?, completed_at = ? WHERE id = ?
+	`, status, txHash, completedAt, id)
+	if err != nil {
+		return fmt.Errorf("store: update drip: %w", err)
+	}
+	return nil
 }

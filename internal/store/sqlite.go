@@ -20,17 +20,26 @@ type Store struct {
 	db *sql.DB
 }
 
+const dsnPragmas = "_pragma=busy_timeout(5000)" +
+	"&_pragma=journal_mode(WAL)" +
+	"&_pragma=synchronous(NORMAL)" +
+	"&_pragma=foreign_keys(ON)"
+
+// buildDSN converts a plain path or ":memory:" into a SQLite URI DSN with
+// per-connection pragmas embedded, so every connection in the pool picks them up.
+func buildDSN(path string) string {
+	if path == ":memory:" {
+		return "file::memory:?mode=memory&" + dsnPragmas
+	}
+	return "file:" + path + "?" + dsnPragmas
+}
+
 // New opens the SQLite database at path and runs any pending migrations.
 // ctx is used for all setup operations; cancel it to abort a migration in progress.
 func New(ctx context.Context, path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", buildDSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
-	}
-
-	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("store: set pragmas: %w", err)
 	}
 
 	if _, err := db.ExecContext(ctx, `
