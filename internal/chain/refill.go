@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strconv"
 	"time"
 
+	"github.com/ny4rl4th0t3p/pour/internal/observability"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 )
 
@@ -50,6 +52,12 @@ func (c *Chain) refillOne(ctx context.Context, keyIndex uint32, addr string) err
 		return fmt.Errorf("query balance: %w", err)
 	}
 
+	if amt, parseErr := strconv.ParseFloat(bal.Amount, 64); parseErr == nil {
+		observability.DistributorBalance.WithLabelValues(
+			c.info.ChainID, fmt.Sprintf("%d", keyIndex), c.refillThreshold.Denom,
+		).Set(amt)
+	}
+
 	topUp, needed := refillAmount(bal.Amount, c.refillThreshold.Amount)
 	if !needed {
 		return nil
@@ -63,6 +71,7 @@ func (c *Chain) refillOne(ctx context.Context, keyIndex uint32, addr string) err
 	if err != nil {
 		return fmt.Errorf("send refill to distributor %d: %w", keyIndex, err)
 	}
+	observability.DistributorRefillTotal.WithLabelValues(c.info.ChainID).Inc()
 	c.log.Info("chain: distributor refilled",
 		"chain_id", c.info.ChainID, "key_index", keyIndex,
 		"amount", topUp, "denom", c.refillThreshold.Denom)

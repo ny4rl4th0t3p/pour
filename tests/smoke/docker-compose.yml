@@ -27,6 +27,7 @@ services:
       POUR_CONFIG: /etc/pour/chains.yml
       POUR_LISTEN: ":8080"
       POUR_ADMIN_TOKEN: "pour-smoke-admin-token"
+      POUR_METRICS: "true"
     volumes:
       - ./chains.yml:/etc/pour/chains.yml:ro
 

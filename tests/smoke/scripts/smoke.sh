@@ -174,4 +174,13 @@ if [ "$AUTH_CODE" != "401" ]; then
   exit 1
 fi
 
+echo "==> metrics"
+METRICS=$(curl -sf "$BASE/metrics")
+# Existing pour request counter: confirmed outcome must be present
+echo "$METRICS" | grep 'pour_requests_total' | grep -q 'outcome="confirmed"'
+# Refill loop emits distributor balance gauge (chain is live and refill ran before pour)
+echo "$METRICS" | grep -q 'pour_distributor_balance{chain="test-1"'
+# Refill counter: distributor starts at zero on a fresh chain so a top-up must have fired
+echo "$METRICS" | grep -q 'pour_distributor_refill_total{chain="test-1"}'
+
 echo "==> passed"
