@@ -144,6 +144,15 @@ func (m *Manager) Pour(chainID string, req batch.Request) error {
 	return c.Pour(context.Background(), req)
 }
 
+// GetChain returns the active Chain for the given chain ID.
+// Returns false if the chain does not exist or is not active.
+func (m *Manager) GetChain(chainID string) (*Chain, bool) {
+	m.mu.RLock()
+	c := m.chains[chainID]
+	m.mu.RUnlock()
+	return c, c != nil
+}
+
 // GetActive returns the ChainSnapshot for an active chain.
 // Returns false if the chain does not exist or is not active.
 func (m *Manager) GetActive(chainID string) (ChainSnapshot, bool) {

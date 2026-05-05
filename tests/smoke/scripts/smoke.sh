@@ -130,4 +130,48 @@ if [ "$STATUS" = "200" ]; then
   exit 1
 fi
 
+ADMIN="$BASE/admin"
+
+echo "==> admin: distributor list"
+DISTS=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$ADMIN/distributors/test-1")
+echo "    $DISTS"
+echo "$DISTS" | grep -q '"index":1'
+echo "$DISTS" | grep -q '"status":"healthy"'
+echo "$DISTS" | grep -q '"address"'
+
+echo "==> admin: chain status (healthy)"
+CHAIN_ST=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$ADMIN/chains/test-1/status")
+echo "    $CHAIN_ST"
+echo "$CHAIN_ST" | grep -q '"suspended":false'
+echo "$CHAIN_ST" | grep -q '"multisend_disabled":false'
+
+echo "==> admin: resume on non-suspended chain returns 409"
+RESUME_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+  -H "Authorization: Bearer $ADMIN_TOKEN" "$ADMIN/chains/test-1/resume")
+if [ "$RESUME_CODE" != "409" ]; then
+  echo "FAIL: expected 409 resuming non-suspended chain, got $RESUME_CODE"
+  exit 1
+fi
+
+echo "==> admin: gas-cache (populated after pour)"
+GC=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$ADMIN/chains/test-1/gas-cache")
+echo "    $GC"
+echo "$GC" | grep -q '"fee_denom"'
+echo "$GC" | grep -q '"sample_count"'
+
+echo "==> admin: gas-cache reset"
+curl -sf -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$ADMIN/chains/test-1/gas-cache/reset" | grep -q '"ok":true'
+
+echo "==> admin: unauthorized request returns 401"
+AUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  "$ADMIN/chains/test-1/status")
+if [ "$AUTH_CODE" != "401" ]; then
+  echo "FAIL: expected 401 without token, got $AUTH_CODE"
+  exit 1
+fi
+
 echo "==> passed"

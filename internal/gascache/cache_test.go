@@ -152,6 +152,84 @@ func TestRecordSuccess_multiSend_separateFromSend(t *testing.T) {
 	}
 }
 
+func TestRead_miss(t *testing.T) {
+	c := newTestCache(t)
+	row, found, err := c.Read(t.Context(), "test-1")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if found || row != nil {
+		t.Error("expected miss on empty cache")
+	}
+}
+
+func TestRead_hit(t *testing.T) {
+	c := newTestCache(t)
+	if err := c.RecordSuccess(t.Context(), "test-1", tx.MsgTypeSend, 150_000, 1, "uatom", "0.025"); err != nil {
+		t.Fatalf("RecordSuccess: %v", err)
+	}
+	row, found, err := c.Read(t.Context(), "test-1")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if !found {
+		t.Fatal("expected hit after RecordSuccess")
+	}
+	if row.BaseGas != 150_000 {
+		t.Errorf("BaseGas = %d, want 150000", row.BaseGas)
+	}
+	if row.FeeDenom != "uatom" {
+		t.Errorf("FeeDenom = %q, want uatom", row.FeeDenom)
+	}
+	if row.SampleCount != 1 {
+		t.Errorf("SampleCount = %d, want 1", row.SampleCount)
+	}
+}
+
+func TestRead_multisendColumns(t *testing.T) {
+	c := newTestCache(t)
+	if err := c.RecordSuccess(t.Context(), "test-1", tx.MsgTypeMultiSend, 500_000, 10, "uatom", "0.025"); err != nil {
+		t.Fatalf("RecordSuccess multisend: %v", err)
+	}
+	row, found, err := c.Read(t.Context(), "test-1")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if !found {
+		t.Fatal("expected hit")
+	}
+	if row.MultisendGasPerOutput != 50_000 {
+		t.Errorf("MultisendGasPerOutput = %d, want 50000", row.MultisendGasPerOutput)
+	}
+	if row.MultisendSampleCount != 1 {
+		t.Errorf("MultisendSampleCount = %d, want 1", row.MultisendSampleCount)
+	}
+}
+
+func TestReset(t *testing.T) {
+	c := newTestCache(t)
+	if err := c.RecordSuccess(t.Context(), "test-1", tx.MsgTypeSend, 150_000, 1, "uatom", "0.025"); err != nil {
+		t.Fatalf("RecordSuccess: %v", err)
+	}
+	if err := c.Reset(t.Context(), "test-1"); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	_, found, err := c.Read(t.Context(), "test-1")
+	if err != nil {
+		t.Fatalf("Read after Reset: %v", err)
+	}
+	if found {
+		t.Error("expected miss after Reset")
+	}
+}
+
+func TestReset_noRow(t *testing.T) {
+	c := newTestCache(t)
+	if err := c.Reset(t.Context(), "nonexistent"); err != nil {
+		t.Errorf("Reset on missing row should not error: %v", err)
+	}
+}
+
 func TestRecordFailure(t *testing.T) {
 	c := newTestCache(t)
 

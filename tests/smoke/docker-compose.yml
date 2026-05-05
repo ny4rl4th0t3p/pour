@@ -26,6 +26,7 @@ services:
       POUR_MNEMONIC: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
       POUR_CONFIG: /etc/pour/chains.yml
       POUR_LISTEN: ":8080"
+      POUR_ADMIN_TOKEN: "pour-smoke-admin-token"
     volumes:
       - ./chains.yml:/etc/pour/chains.yml:ro
 
@@ -35,6 +36,8 @@ services:
       faucet:
         condition: service_started
     command: [ "/bin/sh", "/scripts/smoke.sh" ]
+    environment:
+      ADMIN_TOKEN: "pour-smoke-admin-token"
     volumes:
       - ./scripts/smoke.sh:/scripts/smoke.sh:ro
       - state:/state:ro

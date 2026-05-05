@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
+	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
@@ -369,5 +371,254 @@ func TestHandler_reload(t *testing.T) {
 	}
 	if !resp["ok"] {
 		t.Errorf("reload: expected {ok:true}, got %v", resp)
+	}
+}
+
+// ----- distributor / gas-cache / chain-status / resume handler tests -----
+
+// newAdminSetup builds a handler backed by a standalone-only manager and a fresh gas cache.
+func newAdminSetup(t *testing.T) (*Handler, *chain.Manager, *gascache.Cache) {
+	t.Helper()
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	gc := gascache.New(s)
+	mgr := standaloneOnlyManager(t)
+	h := New(Deps{RegStore: mgr.Store(), Manager: mgr, GasCache: gc})
+	return h, mgr, gc
+}
+
+// serve sends req through the handler's router and returns the recorder.
+func serve(h *Handler, method, path, body string) *httptest.ResponseRecorder {
+	var bodyReader *strings.Reader
+	if body != "" {
+		bodyReader = strings.NewReader(body)
+	}
+	var req *http.Request
+	if bodyReader != nil {
+		req = httptest.NewRequestWithContext(context.Background(), method, path, bodyReader)
+	} else {
+		req = httptest.NewRequestWithContext(context.Background(), method, path, http.NoBody)
+	}
+	w := httptest.NewRecorder()
+	h.Router().ServeHTTP(w, req)
+	return w
+}
+
+func TestHandler_distributorList_notFound(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodGet, "/distributors/unknown-1", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", w.Code)
+	}
+}
+
+func TestHandler_distributorList_success(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodGet, "/distributors/mynet-1", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Distributors []distributorJSON `json:"distributors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Distributors) != 1 {
+		t.Fatalf("expected 1 distributor, got %d", len(resp.Distributors))
+	}
+	if resp.Distributors[0].Index != 1 {
+		t.Errorf("index = %d, want 1", resp.Distributors[0].Index)
+	}
+	if resp.Distributors[0].Status != "healthy" {
+		t.Errorf("status = %q, want healthy", resp.Distributors[0].Status)
+	}
+}
+
+func TestHandler_distributorRefill_notFound(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodPost, "/distributors/unknown-1/refill", "{}")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", w.Code)
+	}
+}
+
+func TestHandler_distributorRefill_badBody(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodPost, "/distributors/mynet-1/refill", "not json")
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got %d, want 400", w.Code)
+	}
+}
+
+func TestHandler_distributorRefill_all(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	// Refill all: gRPC will fail (no real node), so results have ok=false.
+	// The handler itself should still return 200 with per-distributor results.
+	w := serve(h, http.MethodPost, "/distributors/mynet-1/refill", "{}")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Results []refillResult `json:"results"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(resp.Results))
+	}
+	if resp.Results[0].Index != 1 {
+		t.Errorf("result index = %d, want 1", resp.Results[0].Index)
+	}
+}
+
+func TestHandler_distributorRefill_specificIndex(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodPost, "/distributors/mynet-1/refill", `{"index":1}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Results []refillResult `json:"results"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(resp.Results))
+	}
+}
+
+func TestHandler_gasCacheGet_chainNotFound(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodGet, "/chains/unknown-1/gas-cache", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", w.Code)
+	}
+}
+
+func TestHandler_gasCacheGet_cacheMiss(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodGet, "/chains/mynet-1/gas-cache", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404 when no cache entry", w.Code)
+	}
+}
+
+func TestHandler_gasCacheGet_success(t *testing.T) {
+	h, _, gc := newAdminSetup(t)
+	if err := gc.RecordSuccess(t.Context(), "mynet-1", tx.MsgTypeSend, 150_000, 1, "umynet", "0.025"); err != nil {
+		t.Fatalf("RecordSuccess: %v", err)
+	}
+	w := serve(h, http.MethodGet, "/chains/mynet-1/gas-cache", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var row gascache.GasCacheRow
+	if err := json.NewDecoder(w.Body).Decode(&row); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if row.BaseGas != 150_000 {
+		t.Errorf("BaseGas = %d, want 150000", row.BaseGas)
+	}
+	if row.FeeDenom != "umynet" {
+		t.Errorf("FeeDenom = %q, want umynet", row.FeeDenom)
+	}
+}
+
+func TestHandler_gasCacheReset_notFound(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodPost, "/chains/unknown-1/gas-cache/reset", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", w.Code)
+	}
+}
+
+func TestHandler_gasCacheReset_success(t *testing.T) {
+	h, _, gc := newAdminSetup(t)
+	if err := gc.RecordSuccess(t.Context(), "mynet-1", tx.MsgTypeSend, 150_000, 1, "umynet", "0.025"); err != nil {
+		t.Fatalf("RecordSuccess: %v", err)
+	}
+	w := serve(h, http.MethodPost, "/chains/mynet-1/gas-cache/reset", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	// Verify row is gone.
+	_, found, err := gc.Read(t.Context(), "mynet-1")
+	if err != nil {
+		t.Fatalf("Read after reset: %v", err)
+	}
+	if found {
+		t.Error("expected cache entry deleted after reset")
+	}
+}
+
+func TestHandler_chainStatus_notFound(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodGet, "/chains/unknown-1/status", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", w.Code)
+	}
+}
+
+func TestHandler_chainStatus_success(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodGet, "/chains/mynet-1/status", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp chainStatusJSON
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Suspended {
+		t.Error("expected chain not suspended initially")
+	}
+	if resp.MultiSendDisabled {
+		t.Error("expected multisend not disabled initially")
+	}
+}
+
+func TestHandler_chainResume_notFound(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodPost, "/chains/unknown-1/resume", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", w.Code)
+	}
+}
+
+func TestHandler_chainResume_notSuspended(t *testing.T) {
+	h, _, _ := newAdminSetup(t)
+	w := serve(h, http.MethodPost, "/chains/mynet-1/resume", "")
+	if w.Code != http.StatusConflict {
+		t.Errorf("got %d, want 409 (chain not suspended)", w.Code)
+	}
+}
+
+func TestHandler_chainResume_success(t *testing.T) {
+	h, mgr, _ := newAdminSetup(t)
+	c, ok := mgr.GetChain("mynet-1")
+	if !ok {
+		t.Fatal("chain mynet-1 not found in manager")
+	}
+	c.Suspend(errors.New("forced for test"))
+
+	w := serve(h, http.MethodPost, "/chains/mynet-1/resume", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp map[string]bool
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp["ok"] {
+		t.Error("expected {ok:true}")
+	}
+	if c.ChainStatus().Suspended {
+		t.Error("chain should no longer be suspended after resume")
 	}
 }

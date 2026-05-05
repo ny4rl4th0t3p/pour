@@ -134,6 +134,62 @@ func (c *Cache) RecordSuccess(
 	return nil
 }
 
+// GasCacheRow holds all columns from a chain_gas_cache row.
+type GasCacheRow struct {
+	BaseGas               uint64 `json:"base_gas"`
+	GasPerOutput          uint64 `json:"gas_per_output"`
+	FeeDenom              string `json:"fee_denom"`
+	GasPriceAmount        string `json:"gas_price_amount"`
+	SampleCount           int    `json:"sample_count"`
+	LastUpdated           int64  `json:"last_updated"`
+	LastFailureReason     string `json:"last_failure_reason,omitempty"`
+	LastFailureAt         int64  `json:"last_failure_at,omitempty"`
+	LastDecayAt           int64  `json:"last_decay_at,omitempty"`
+	MultisendGasPerOutput uint64 `json:"multisend_gas_per_output"`
+	MultisendSampleCount  int    `json:"multisend_sample_count"`
+}
+
+// Read returns the full gas cache row for chainID, or (nil, false, nil) if no row exists.
+func (c *Cache) Read(ctx context.Context, chainID string) (*GasCacheRow, bool, error) {
+	var row GasCacheRow
+	var failureReason sql.NullString
+	var failureAt, decayAt sql.NullInt64
+	err := c.db.QueryRowContext(ctx, `
+		SELECT base_gas, gas_per_output, fee_denom, gas_price_amount, sample_count,
+		       last_updated, last_failure_reason, last_failure_at, last_decay_at,
+		       multisend_gas_per_output, multisend_sample_count
+		FROM chain_gas_cache WHERE chain_id = ?
+	`, chainID).Scan(
+		&row.BaseGas, &row.GasPerOutput, &row.FeeDenom, &row.GasPriceAmount, &row.SampleCount,
+		&row.LastUpdated, &failureReason, &failureAt, &decayAt,
+		&row.MultisendGasPerOutput, &row.MultisendSampleCount,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("gascache: read %s: %w", chainID, err)
+	}
+	if failureReason.Valid {
+		row.LastFailureReason = failureReason.String
+	}
+	if failureAt.Valid {
+		row.LastFailureAt = failureAt.Int64
+	}
+	if decayAt.Valid {
+		row.LastDecayAt = decayAt.Int64
+	}
+	return &row, true, nil
+}
+
+// Reset deletes the gas cache row for chainID. The next broadcast will cold-start estimation.
+func (c *Cache) Reset(ctx context.Context, chainID string) error {
+	if _, err := c.db.ExecContext(ctx, `DELETE FROM chain_gas_cache WHERE chain_id = ?`, chainID); err != nil {
+		return fmt.Errorf("gascache: reset %s: %w", chainID, err)
+	}
+	return nil
+}
+
 // RecordFailure records a broadcast failure reason without modifying gas values.
 // reason is "out_of_gas", "insufficient_fee", or "broadcast_error".
 func (c *Cache) RecordFailure(ctx context.Context, chainID, msgType, reason string) error {
