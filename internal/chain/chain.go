@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"sync/atomic"
 	"time"
 
@@ -17,17 +18,22 @@ import (
 type txBroadcaster interface {
 	BuildAndBroadcast(ctx context.Context, req tx.SendRequest) (*tx.BroadcastResult, error)
 	BuildAndBroadcastMulti(ctx context.Context, req tx.BatchSendRequest) (*tx.BroadcastResult, error)
+	QueryBalance(ctx context.Context, address, denom string) (tx.Coin, error)
 	Close() error
 }
 
 // Chain is an active, connected chain managed by Manager.
 type Chain struct {
-	info         *chainregistry.ChainInfo
-	drip         chainregistry.DripPolicy
-	client       txBroadcaster
-	endpointPool *tx.EndpointPool
-	pool         *batch.Pool // nil in sync mode (BatchWindow == 0)
-	log          *slog.Logger
+	info             *chainregistry.ChainInfo
+	drip             chainregistry.DripPolicy
+	client           txBroadcaster
+	endpointPool     *tx.EndpointPool
+	pool             *batch.Pool // nil in sync mode (BatchWindow == 0)
+	holderAddr       string
+	distributorAddrs []string // key indices 1..N
+	refillThreshold  tx.Coin
+	refillInterval   time.Duration
+	log              *slog.Logger
 
 	multiSendDisabled   atomic.Bool
 	suspended           atomic.Bool
@@ -72,12 +78,41 @@ func newChain(
 		return nil, err
 	}
 
+	holderAddr, err := client.AddressForKey(0)
+	if err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("chain %q: derive holder address: %w", info.ChainID, err)
+	}
+	distributorAddrs := make([]string, n)
+	for i := range n {
+		distributorAddrs[i], err = client.AddressForKey(uint32(i + 1))
+		if err != nil {
+			_ = client.Close()
+			return nil, fmt.Errorf("chain %q: derive distributor %d address: %w", info.ChainID, i+1, err)
+		}
+	}
+
+	refillThreshold, err := resolveRefillThreshold(cfg.RefillThreshold, drip.Anonymous, n)
+	if err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("chain %q: refill threshold: %w", info.ChainID, err)
+	}
+	refillInterval, err := cfg.RefillIntervalOrDefault()
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+
 	c := &Chain{
-		info:         info,
-		drip:         drip,
-		client:       client,
-		endpointPool: epPool,
-		log:          log,
+		info:             info,
+		drip:             drip,
+		client:           client,
+		endpointPool:     epPool,
+		holderAddr:       holderAddr,
+		distributorAddrs: distributorAddrs,
+		refillThreshold:  refillThreshold,
+		refillInterval:   refillInterval,
+		log:              log,
 	}
 
 	if batchDur > 0 {
@@ -91,6 +126,27 @@ func newChain(
 	}
 
 	return c, nil
+}
+
+// resolveRefillThreshold returns the configured threshold, or computes the default
+// (dripAnonymous × distributors × 10) when threshold is empty.
+func resolveRefillThreshold(threshold, dripAnonymous string, distributors int) (tx.Coin, error) {
+	if threshold != "" {
+		return config.ParseCoin(threshold)
+	}
+	if dripAnonymous == "" {
+		return tx.Coin{}, fmt.Errorf("refill_threshold not set and drip.anonymous is empty")
+	}
+	coin, err := config.ParseCoin(dripAnonymous)
+	if err != nil {
+		return tx.Coin{}, err
+	}
+	amount := new(big.Int)
+	if _, ok := amount.SetString(coin.Amount, 10); !ok {
+		return tx.Coin{}, fmt.Errorf("invalid drip amount %q", coin.Amount)
+	}
+	amount.Mul(amount, big.NewInt(int64(distributors)*10))
+	return tx.Coin{Denom: coin.Denom, Amount: amount.String()}, nil
 }
 
 // Info returns the chain's resolved configuration.
@@ -122,7 +178,8 @@ func (c *Chain) Pour(_ context.Context, req batch.Request) error {
 	return c.pool.Route(req)
 }
 
-// Start launches the pool goroutines (if batching is enabled) and the endpoint probe loop.
+// Start launches the pool goroutines (if batching is enabled), the endpoint probe loop,
+// and the holder refill loop.
 func (c *Chain) Start(ctx context.Context) {
 	if c.pool != nil {
 		c.pool.Start(ctx)
@@ -130,6 +187,7 @@ func (c *Chain) Start(ctx context.Context) {
 	if c.endpointPool != nil {
 		startProbeLoop(ctx, c.endpointPool, c.log)
 	}
+	go c.RefillLoop(ctx)
 }
 
 // Suspend marks the chain as suspended and logs the reason.
