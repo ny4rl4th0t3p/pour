@@ -17,6 +17,8 @@ import (
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
+const testMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
 func newTestGasCache(t *testing.T) *gascache.Cache {
 	t.Helper()
 	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
@@ -56,7 +58,7 @@ func TestManager_standaloneEnabled(t *testing.T) {
 		},
 	}
 
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -84,7 +86,7 @@ func TestManager_standaloneDisabled(t *testing.T) {
 		},
 	}
 
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -102,7 +104,7 @@ func TestManager_getActive_enabled(t *testing.T) {
 		},
 	}
 
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -119,8 +121,9 @@ func TestManager_getActive_enabled(t *testing.T) {
 
 func TestManager_getActive_unknown(t *testing.T) {
 	m, err := New(context.Background(), Options{
-		Config:   &config.ChainsConfig{},
-		GasCache: newTestGasCache(t),
+		Config:     &config.ChainsConfig{},
+		GasCache:   newTestGasCache(t),
+		MnemonicFn: func() string { return testMnemonic },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -139,7 +142,7 @@ func TestManager_getActive_disabled(t *testing.T) {
 		},
 	}
 
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -154,7 +157,7 @@ func TestManager_pendingFrozenCount_zero(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{standaloneChainCfg("mynet-1", "mynet", true)},
 	}
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -169,7 +172,7 @@ func TestManager_reload_updatesDripPolicy(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{standaloneChainCfg("mynet-1", "mynet", true)},
 	}
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -209,7 +212,7 @@ func TestManager_multipleChains(t *testing.T) {
 		},
 	}
 
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -229,7 +232,7 @@ func TestManager_lastFetched_standaloneOnlyIsZero(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{standaloneChainCfg("mynet-1", "mynet", true)},
 	}
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -243,7 +246,7 @@ func TestManager_store_nonNil(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{standaloneChainCfg("mynet-1", "mynet", true)},
 	}
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -257,7 +260,7 @@ func TestManager_clients_containsActiveChains(t *testing.T) {
 	cfg := &config.ChainsConfig{
 		Chains: []config.ChainConfig{standaloneChainCfg("mynet-1", "mynet", true)},
 	}
-	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t)})
+	m, err := New(context.Background(), Options{Config: cfg, GasCache: newTestGasCache(t), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -299,9 +302,10 @@ func TestManager_logChangeSet(t *testing.T) {
 		Chains: []config.ChainConfig{standaloneChainCfg("mynet-1", "mynet", true)},
 	}
 	m, err := New(context.Background(), Options{
-		Config:   cfg,
-		GasCache: newTestGasCache(t),
-		Logger:   slog.New(lh),
+		Config:     cfg,
+		GasCache:   newTestGasCache(t),
+		Logger:     slog.New(lh),
+		MnemonicFn: func() string { return testMnemonic },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -356,6 +360,7 @@ func TestManager_refresh(t *testing.T) {
 		Config:          cfg,
 		GasCache:        newTestGasCache(t),
 		RegistryBaseURL: srv.URL,
+		MnemonicFn:      func() string { return testMnemonic },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -406,6 +411,7 @@ func TestManager_refreshLoop(t *testing.T) {
 		GasCache:        newTestGasCache(t),
 		RegistryBaseURL: srv.URL,
 		RefreshInterval: 50 * time.Millisecond,
+		MnemonicFn:      func() string { return testMnemonic },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

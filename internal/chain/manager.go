@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
@@ -21,6 +22,7 @@ type Options struct {
 	Config          *config.ChainsConfig
 	GasCache        *gascache.Cache
 	Logger          *slog.Logger
+	MnemonicFn      func() string // called when a new chain connection is opened
 	RegistryBaseURL string        // empty → cosmos/chain-registry GitHub URL
 	RefreshInterval time.Duration // 0 → 6h
 }
@@ -31,6 +33,8 @@ type Manager struct {
 	regStore        *chainregistry.Store
 	gasCache        *gascache.Cache
 	drips           map[string]chainregistry.DripPolicy // all chains, both standalone and registry
+	chainCfgs       map[string]config.ChainConfig
+	mnemonicFn      func() string // called when a new chain connection is opened
 	registryIDs     []string
 	refreshInterval time.Duration
 	registryBaseURL string
@@ -39,7 +43,8 @@ type Manager struct {
 	chains      map[string]*Chain
 	lastFetched time.Time
 
-	log *slog.Logger
+	startCtx context.Context // set by Start; nil until then
+	log      *slog.Logger
 }
 
 // New creates a Manager: fetches live data for all enabled registry chains, adds
@@ -94,6 +99,8 @@ func New(ctx context.Context, opts Options) (*Manager, error) {
 		regStore:        regStore,
 		gasCache:        opts.GasCache,
 		drips:           buildDripMap(opts.Config),
+		chainCfgs:       buildChainCfgMap(opts.Config),
+		mnemonicFn:      opts.MnemonicFn,
 		registryIDs:     registryIDs,
 		refreshInterval: opts.RefreshInterval,
 		registryBaseURL: opts.RegistryBaseURL,
@@ -108,6 +115,33 @@ func New(ctx context.Context, opts Options) (*Manager, error) {
 	}
 
 	return m, nil
+}
+
+// Start launches pool goroutines and endpoint probe loops for all active chains,
+// and stores ctx so that chains created during future reconciles are also started.
+func (m *Manager) Start(ctx context.Context) {
+	m.mu.Lock()
+	m.startCtx = ctx
+	chains := make([]*Chain, 0, len(m.chains))
+	for _, c := range m.chains {
+		chains = append(chains, c)
+	}
+	m.mu.Unlock()
+
+	for _, c := range chains {
+		c.Start(ctx)
+	}
+}
+
+// Pour routes a batch request to the named chain's distributor pool.
+func (m *Manager) Pour(chainID string, req batch.Request) error {
+	m.mu.RLock()
+	c := m.chains[chainID]
+	m.mu.RUnlock()
+	if c == nil {
+		return fmt.Errorf("chain %q: not found or not active", chainID)
+	}
+	return c.Pour(context.Background(), req)
 }
 
 // GetActive returns the ChainSnapshot for an active chain.
@@ -199,8 +233,10 @@ func (m *Manager) Reload(cfg *config.ChainsConfig) error {
 		return err
 	}
 	newDrips := buildDripMap(cfg)
+	newCfgs := buildChainCfgMap(cfg)
 	m.mu.Lock()
 	m.drips = newDrips
+	m.chainCfgs = newCfgs
 	m.mu.Unlock()
 	m.regStore.SetOverrides(ov)
 	return m.reconcile()
@@ -314,12 +350,16 @@ func (m *Manager) reconcile() error {
 			continue
 		}
 		drip := m.dripFor(id)
-		c, err := newChain(info, drip, m.gasCache)
+		cfg := m.cfgFor(id)
+		c, err := newChain(info, drip, m.gasCache, m.mnemonicFn(), cfg, m.log)
 		if err != nil {
 			for _, ac := range active {
 				ac.Close()
 			}
 			return fmt.Errorf("chain %q: %w", id, err)
+		}
+		if m.startCtx != nil {
+			c.Start(m.startCtx)
 		}
 		active[id] = c
 	}
@@ -342,8 +382,20 @@ func buildDripMap(cfg *config.ChainsConfig) map[string]chainregistry.DripPolicy 
 	return m
 }
 
+func buildChainCfgMap(cfg *config.ChainsConfig) map[string]config.ChainConfig {
+	m := make(map[string]config.ChainConfig, len(cfg.Chains))
+	for i := range cfg.Chains {
+		m[cfg.Chains[i].ChainID] = cfg.Chains[i]
+	}
+	return m
+}
+
 func (m *Manager) dripFor(chainID string) chainregistry.DripPolicy {
 	return m.drips[chainID]
+}
+
+func (m *Manager) cfgFor(chainID string) config.ChainConfig {
+	return m.chainCfgs[chainID]
 }
 
 func (m *Manager) closeAll() {
