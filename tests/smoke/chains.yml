@@ -3,6 +3,10 @@ abuse:
     requests_per_window: 1
     window: 1h
 
+admin:
+  allowed_cidrs:
+    - "0.0.0.0/0"
+
 chains:
   - chain_id: test-1
     standalone: true
