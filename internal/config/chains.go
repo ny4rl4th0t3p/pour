@@ -111,14 +111,63 @@ type ChainConfig struct {
 	// Drip is required for enabled chains.
 	Drip DripConfig `koanf:"drip"`
 
-	// v0.3.0 fields — parsed but unused until then.
-	Distributors int    `koanf:"distributors"`
-	BatchWindow  string `koanf:"batch_window"`
+	// Concurrency fields.
+	// Distributors: number of signing accounts (indices 1..N). 0 = default (1).
+	// BatchWindow: flush interval; "0" disables batching (synchronous mode). Default "5s".
+	// MaxRecipientsPerBatch: cap per MsgMultiSend. 0 = default (100).
+	// MaxQueueDepth: per-distributor queue cap. 0 = default (500).
+	// RefillThreshold: minimum distributor balance before holder tops it up (coin string).
+	//   Empty = computed at startup as drip.anonymous × Distributors × 10.
+	Distributors          int    `koanf:"distributors"`
+	BatchWindow           string `koanf:"batch_window"`
+	MaxRecipientsPerBatch int    `koanf:"max_recipients_per_batch"`
+	MaxQueueDepth         int    `koanf:"max_queue_depth"`
+	RefillThreshold       string `koanf:"refill_threshold"`
 }
 
 // IsEnabled reports whether the chain is explicitly enabled.
 func (c *ChainConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
+}
+
+// DistributorCount returns the effective number of distributors, defaulting to 1 when 0.
+func (c *ChainConfig) DistributorCount() int {
+	if c.Distributors <= 0 {
+		return 1
+	}
+	return c.Distributors
+}
+
+// BatchWindowDuration parses BatchWindow, returning 5s when empty and 0 when "0" (sync mode).
+func (c *ChainConfig) BatchWindowDuration() (time.Duration, error) {
+	if c.BatchWindow == "" {
+		return 5 * time.Second, nil
+	}
+	d, err := time.ParseDuration(c.BatchWindow)
+	if err != nil {
+		return 0, fmt.Errorf("config: chain %q: batch_window %q: %w", c.ChainID, c.BatchWindow, err)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("config: chain %q: batch_window %q: must be non-negative", c.ChainID, c.BatchWindow)
+	}
+	return d, nil
+}
+
+// MaxRecipientsPerBatchOrDefault returns MaxRecipientsPerBatch, defaulting to 25 when 0.
+// 25 keeps gas cost and tx size well within conservative chain limits; operators can tune up.
+func (c *ChainConfig) MaxRecipientsPerBatchOrDefault() int {
+	if c.MaxRecipientsPerBatch <= 0 {
+		return 25
+	}
+	return c.MaxRecipientsPerBatch
+}
+
+// MaxQueueDepthOrDefault returns MaxQueueDepth, defaulting to 500 when 0.
+func (c *ChainConfig) MaxQueueDepthOrDefault() int {
+	if c.MaxQueueDepth <= 0 {
+		return 500
+	}
+	return c.MaxQueueDepth
 }
 
 // EndpointsConfig holds endpoint overrides for a chain.
@@ -183,6 +232,25 @@ func LoadChains(path string) (*ChainsConfig, error) {
 			}
 			if d <= 0 {
 				return nil, fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
+			}
+		}
+		if chain.Distributors < 0 {
+			return nil, fmt.Errorf("config: chain %q: distributors must be >= 0", chain.ChainID)
+		}
+		if chain.BatchWindow != "" {
+			if _, err := chain.BatchWindowDuration(); err != nil {
+				return nil, err
+			}
+		}
+		if chain.MaxRecipientsPerBatch < 0 {
+			return nil, fmt.Errorf("config: chain %q: max_recipients_per_batch must be >= 0", chain.ChainID)
+		}
+		if chain.MaxQueueDepth < 0 {
+			return nil, fmt.Errorf("config: chain %q: max_queue_depth must be >= 0", chain.ChainID)
+		}
+		if chain.RefillThreshold != "" {
+			if _, err := ParseCoin(chain.RefillThreshold); err != nil {
+				return nil, fmt.Errorf("config: chain %q: refill_threshold: %w", chain.ChainID, err)
 			}
 		}
 		if chain.Standalone {
