@@ -77,7 +77,10 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 // tryPoolRoute routes the request to the batch pool. Returns true when the request
 // is fully handled (queued or error response sent), or false when ErrSyncMode is
 // returned and the caller should fall through to the sync path.
-func (h *Handler) tryPoolRoute(w http.ResponseWriter, r *http.Request, chainID, address string, coins tx.Coins, amount, ip string, now int64) bool {
+func (h *Handler) tryPoolRoute(
+	w http.ResponseWriter, r *http.Request,
+	chainID, address string, coins tx.Coins, amount, ip string, now int64,
+) bool {
 	ch := make(chan batch.Result, 1)
 	routeErr := h.pourer.Pour(chainID, batch.Request{
 		ToAddress: address,
@@ -122,27 +125,32 @@ func (h *Handler) tryPoolRoute(w http.ResponseWriter, r *http.Request, chainID, 
 	return true
 }
 
-// awaitDrip blocks until the batch result arrives (or ctx times out), then
+// awaitDrip blocks until the batch result arrives (or the wait times out), then
 // updates the drip record and emits the outcome metric.
+// ctx should be context.WithoutCancel(r.Context()) so it outlives the response.
 func (h *Handler) awaitDrip(ctx context.Context, chainID string, dripID int64, ch <-chan batch.Result) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
+	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer waitCancel()
 
 	var res batch.Result
 	select {
 	case res = <-ch:
-	case <-ctx.Done():
-		res = batch.Result{Err: ctx.Err()}
+	case <-waitCtx.Done():
+		res = batch.Result{Err: waitCtx.Err()}
 	}
+
+	// ctx (WithoutCancel parent) is still valid even if waitCtx expired.
+	writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer writeCancel()
 
 	completedAt := time.Now().Unix()
 	if res.Err != nil {
 		pourRequestsTotal.WithLabelValues(chainID, "failed").Inc()
-		_ = h.dripStore.UpdateDrip(context.Background(), dripID, pourapi.StatusFailed, "", completedAt)
+		_ = h.dripStore.UpdateDrip(writeCtx, dripID, pourapi.StatusFailed, "", completedAt)
 		return
 	}
 	pourRequestsTotal.WithLabelValues(chainID, "confirmed").Inc()
-	_ = h.dripStore.UpdateDrip(context.Background(), dripID, pourapi.StatusConfirmed, res.TxHash, completedAt)
+	_ = h.dripStore.UpdateDrip(writeCtx, dripID, pourapi.StatusConfirmed, res.TxHash, completedAt)
 }
 
 // pourSync handles the synchronous broadcast path (batch_window = "0" or Pourer not set).
