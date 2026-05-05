@@ -65,7 +65,6 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := bc.BuildAndBroadcast(r.Context(), tx.SendRequest{
-		Mnemonic:  h.mnemonic,
 		KeyIndex:  0,
 		ToAddress: req.Address,
 		Coins:     tx.Coins{{Amount: coin.Amount, Denom: coin.Denom}},

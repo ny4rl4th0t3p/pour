@@ -21,6 +21,8 @@ import (
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
+const testServerMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
 // ----- test doubles -----
 
 type fixedBroadcaster struct{}
@@ -66,7 +68,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 			},
 		},
 	}
-	mgr, err := chain.New(t.Context(), chain.Options{Config: cfg, GasCache: gascache.New(s)})
+	mgr, err := chain.New(t.Context(), chain.Options{Config: cfg, GasCache: gascache.New(s), MnemonicFn: func() string { return testServerMnemonic }})
 	if err != nil {
 		t.Fatalf("chain.New: %v", err)
 	}
@@ -81,8 +83,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 			"osmosis-1": fixedBroadcaster{},
 			"cosmos-1":  fixedBroadcaster{},
 		},
-		Mnemonic: "test",
-		Version:  "test",
+		Version: "test",
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -116,8 +117,9 @@ func newTestSrv(t *testing.T) *httptest.Server {
 		}},
 	}
 	mgr, err := chain.New(t.Context(), chain.Options{
-		Config:   cfg,
-		GasCache: gascache.New(s),
+		Config:     cfg,
+		GasCache:   gascache.New(s),
+		MnemonicFn: func() string { return testServerMnemonic },
 	})
 	if err != nil {
 		t.Fatalf("chain.New: %v", err)
@@ -130,7 +132,6 @@ func newTestSrv(t *testing.T) *httptest.Server {
 		Store:        s,
 		Limiter:      ratelimit.New(s, 10, time.Hour),
 		Broadcasters: map[string]handlers.Broadcaster{"osmosis-1": fixedBroadcaster{}},
-		Mnemonic:     "test",
 		Version:      "test",
 	})
 	if err != nil {

@@ -80,7 +80,6 @@ func newTestHandler(t *testing.T, bc Broadcaster, rl RateLimiter, ds DripStore) 
 		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
 		Limiter:      rl,
 		DripStore:    ds,
-		Mnemonic:     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
 		Version:      "test",
 	})
 }
@@ -187,7 +186,6 @@ func TestPour_realLimiter_rateLimited(t *testing.T) {
 		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
 		Limiter:      limiter,
 		DripStore:    s,
-		Mnemonic:     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
 		Version:      "test",
 	})
 

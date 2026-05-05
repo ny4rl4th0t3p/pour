@@ -18,6 +18,8 @@ import (
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
+const testMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
 // ----- auth middleware tests -----
 
 func newTokenStore() *TokenStore { return &TokenStore{token: "secret"} }
@@ -218,7 +220,7 @@ func standaloneOnlyManager(t *testing.T) *chain.Manager {
 			Drip:         config.DripConfig{Anonymous: "1000000umynet", MaxPerAddressPerDay: "10000000umynet"},
 		}},
 	}
-	mgr, err := chain.New(t.Context(), chain.Options{Config: cfg, GasCache: gascache.New(s)})
+	mgr, err := chain.New(t.Context(), chain.Options{Config: cfg, GasCache: gascache.New(s), MnemonicFn: func() string { return testMnemonic }})
 	if err != nil {
 		t.Fatalf("chain.New: %v", err)
 	}
@@ -305,6 +307,7 @@ func TestHandler_refresh_registryError(t *testing.T) {
 		Config:          cfg,
 		GasCache:        gascache.New(s),
 		RegistryBaseURL: srv.URL,
+		MnemonicFn:      func() string { return testMnemonic },
 	})
 	if err != nil {
 		t.Fatalf("chain.New: %v", err)
