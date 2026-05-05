@@ -391,7 +391,7 @@ func newAdminSetup(t *testing.T) (*Handler, *chain.Manager, *gascache.Cache) {
 }
 
 // serve sends req through the handler's router and returns the recorder.
-func serve(h *Handler, method, path string, body string) *httptest.ResponseRecorder {
+func serve(h *Handler, method, path, body string) *httptest.ResponseRecorder {
 	var bodyReader *strings.Reader
 	if body != "" {
 		bodyReader = strings.NewReader(body)

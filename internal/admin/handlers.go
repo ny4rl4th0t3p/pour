@@ -210,7 +210,7 @@ func (h *Handler) DistributorList(w http.ResponseWriter, r *http.Request) {
 }
 
 type refillRequest struct {
-	Index *int `json:"index"` // nil = all distributors
+	Index *uint32 `json:"index"` // nil = all distributors
 }
 
 type refillResult struct {
@@ -234,9 +234,8 @@ func (h *Handler) DistributorRefill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Index != nil {
-		idx := uint32(*req.Index)
-		err := c.RefillNow(r.Context(), idx)
-		res := refillResult{Index: *req.Index, OK: err == nil}
+		err := c.RefillNow(r.Context(), *req.Index)
+		res := refillResult{Index: int(*req.Index), OK: err == nil}
 		if err != nil {
 			res.Error = err.Error()
 		}
