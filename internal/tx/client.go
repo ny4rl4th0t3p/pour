@@ -16,6 +16,7 @@ import (
 
 	"github.com/ny4rl4th0t3p/pour/internal/tx/internal/keys"
 	authv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/auth/v1beta1"
+	bankv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1"
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
@@ -33,6 +34,7 @@ type connBundle struct {
 	conn    *grpc.ClientConn
 	txSvc   txv1beta1.ServiceClient
 	authSvc authv1beta1.QueryClient
+	bankSvc bankv1beta1.QueryClient
 }
 
 // Client is a single-chain tx client. All private keys are pre-derived at construction;
@@ -93,6 +95,30 @@ func New(chain *chainregistry.ChainInfo, mnemonic string, keyIndices []uint32, o
 // Close releases the underlying gRPC connection.
 func (c *Client) Close() error {
 	return c.bundle.conn.Close()
+}
+
+// QueryBalance returns the balance of denom for address.
+func (c *Client) QueryBalance(ctx context.Context, address, denom string) (Coin, error) {
+	resp, err := c.bundle.bankSvc.Balance(ctx, &bankv1beta1.QueryBalanceRequest{
+		Address: address,
+		Denom:   denom,
+	})
+	if err != nil {
+		return Coin{}, fmt.Errorf("tx: query balance %s/%s: %w", address, denom, err)
+	}
+	if resp.Balance == nil {
+		return Coin{Denom: denom, Amount: "0"}, nil
+	}
+	return Coin{Denom: resp.Balance.Denom, Amount: resp.Balance.Amount}, nil
+}
+
+// AddressForKey returns the bech32 address for the pre-derived key at keyIndex.
+func (c *Client) AddressForKey(keyIndex uint32) (string, error) {
+	k, ok := c.cachedKeys[keyIndex]
+	if !ok {
+		return "", fmt.Errorf("tx: key index %d not pre-derived", keyIndex)
+	}
+	return keys.AddressFromPubKey(k.PubKey(), c.chain.Bech32Prefix)
 }
 
 // BuildAndBroadcast looks up the pre-derived key at req.KeyIndex, builds a MsgSend,
@@ -226,6 +252,7 @@ func newConnBundle(url string) (connBundle, error) {
 		conn:    conn,
 		txSvc:   txv1beta1.NewServiceClient(conn),
 		authSvc: authv1beta1.NewQueryClient(conn),
+		bankSvc: bankv1beta1.NewQueryClient(conn),
 	}, nil
 }
 
