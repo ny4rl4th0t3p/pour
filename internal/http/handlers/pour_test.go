@@ -176,6 +176,62 @@ func TestPour_badJSON(t *testing.T) {
 	}
 }
 
+// capturingDripStore wraps a real store and signals when UpdateDrip is called.
+type capturingDripStore struct {
+	*store.Store
+	updated chan updateCall
+}
+
+type updateCall struct {
+	status string
+	txHash string
+}
+
+func (c *capturingDripStore) UpdateDrip(ctx context.Context, id int64, status, txHash string, completedAt int64) error {
+	err := c.Store.UpdateDrip(ctx, id, status, txHash, completedAt)
+	if err == nil {
+		c.updated <- updateCall{status: status, txHash: txHash}
+	}
+	return err
+}
+
+func TestPour_async_dripRecordTransition(t *testing.T) {
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	ds := &capturingDripStore{Store: s, updated: make(chan updateCall, 1)}
+	pourer := &mockPourer{result: batch.Result{TxHash: "INTEGRATION_TX"}}
+	h := New(Deps{
+		Source:    testSource,
+		Pourer:    pourer,
+		Limiter:   &mockRateLimiter{},
+		DripStore: ds,
+		Version:   "test",
+	})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202", w.Code)
+	}
+
+	select {
+	case got := <-ds.updated:
+		if got.status != pourapi.StatusConfirmed {
+			t.Errorf("drip status: got %q, want %q", got.status, pourapi.StatusConfirmed)
+		}
+		if got.txHash != "INTEGRATION_TX" {
+			t.Errorf("drip txHash: got %q, want INTEGRATION_TX", got.txHash)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout: UpdateDrip not called within 5s")
+	}
+}
+
 func TestPour_realLimiter_rateLimited(t *testing.T) {
 	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
