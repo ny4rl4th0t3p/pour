@@ -119,6 +119,9 @@ func (p *Pool) All() []*Distributor {
 	return out
 }
 
+// Status returns the distributor's current operational status.
+func (d *Distributor) Status() Status { return d.status }
+
 // Start launches all distributor window goroutines.
 func (p *Pool) Start(ctx context.Context) {
 	for _, d := range p.distributors {

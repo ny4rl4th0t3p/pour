@@ -3,13 +3,16 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
+	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
@@ -17,6 +20,7 @@ import (
 type Deps struct {
 	RegStore   *chainregistry.Store
 	Manager    *chain.Manager
+	GasCache   *gascache.Cache
 	ConfigPath string
 	Logger     *slog.Logger
 }
@@ -25,6 +29,7 @@ type Deps struct {
 type Handler struct {
 	regStore   *chainregistry.Store
 	manager    *chain.Manager
+	gasCache   *gascache.Cache
 	configPath string
 	log        *slog.Logger
 }
@@ -37,6 +42,7 @@ func New(deps Deps) *Handler {
 	return &Handler{
 		regStore:   deps.RegStore,
 		manager:    deps.Manager,
+		gasCache:   deps.GasCache,
 		configPath: deps.ConfigPath,
 		log:        deps.Logger,
 	}
@@ -51,6 +57,12 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/registry/accept", h.Accept)
 	r.Post("/registry/refresh", h.Refresh)
 	r.Post("/reload", h.Reload)
+	r.Get("/distributors/{chain}", h.DistributorList)
+	r.Post("/distributors/{chain}/refill", h.DistributorRefill)
+	r.Get("/chains/{chain}/gas-cache", h.GasCacheGet)
+	r.Post("/chains/{chain}/gas-cache/reset", h.GasCacheReset)
+	r.Get("/chains/{chain}/status", h.ChainStatusGet)
+	r.Post("/chains/{chain}/resume", h.ChainResume)
 	return r
 }
 
@@ -156,6 +168,165 @@ func (h *Handler) Reload(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	h.log.Info("admin: config reloaded", "path", h.configPath)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type distributorJSON struct {
+	Index      uint32 `json:"index"`
+	Address    string `json:"address"`
+	Balance    string `json:"balance"`
+	QueueDepth int    `json:"queue_depth"`
+	Status     string `json:"status"`
+}
+
+func distributorStatusString(s batch.Status) string {
+	if s == batch.StatusRecovering {
+		return "recovering"
+	}
+	return "healthy"
+}
+
+// DistributorList handles GET /admin/distributors/{chain}.
+// Returns per-distributor state including live balance.
+func (h *Handler) DistributorList(w http.ResponseWriter, r *http.Request) {
+	chainID := chi.URLParam(r, "chain")
+	c, ok := h.manager.GetChain(chainID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "chain not found")
+		return
+	}
+	states := c.DistributorStates(r.Context())
+	out := make([]distributorJSON, len(states))
+	for i, s := range states {
+		out[i] = distributorJSON{
+			Index:      s.KeyIndex,
+			Address:    s.Address,
+			Balance:    s.Balance,
+			QueueDepth: s.QueueDepth,
+			Status:     distributorStatusString(s.Status),
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"distributors": out})
+}
+
+type refillRequest struct {
+	Index *int `json:"index"` // nil = all distributors
+}
+
+type refillResult struct {
+	Index int    `json:"index"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+// DistributorRefill handles POST /admin/distributors/{chain}/refill.
+// Body: {"index": N} to refill a specific distributor, or {} to refill all below threshold.
+func (h *Handler) DistributorRefill(w http.ResponseWriter, r *http.Request) {
+	chainID := chi.URLParam(r, "chain")
+	c, ok := h.manager.GetChain(chainID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "chain not found")
+		return
+	}
+	var req refillRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Index != nil {
+		idx := uint32(*req.Index)
+		err := c.RefillNow(r.Context(), idx)
+		res := refillResult{Index: *req.Index, OK: err == nil}
+		if err != nil {
+			res.Error = err.Error()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"results": []refillResult{res}})
+		return
+	}
+	states := c.DistributorStates(r.Context())
+	results := make([]refillResult, len(states))
+	for i, s := range states {
+		err := c.RefillNow(r.Context(), s.KeyIndex)
+		results[i] = refillResult{Index: int(s.KeyIndex), OK: err == nil}
+		if err != nil {
+			results[i].Error = err.Error()
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// GasCacheGet handles GET /admin/chains/{chain}/gas-cache.
+func (h *Handler) GasCacheGet(w http.ResponseWriter, r *http.Request) {
+	chainID := chi.URLParam(r, "chain")
+	if _, ok := h.manager.GetChain(chainID); !ok {
+		writeError(w, http.StatusNotFound, "chain not found")
+		return
+	}
+	row, found, err := h.gasCache.Read(r.Context(), chainID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "no gas cache entry for chain")
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
+}
+
+// GasCacheReset handles POST /admin/chains/{chain}/gas-cache/reset.
+func (h *Handler) GasCacheReset(w http.ResponseWriter, r *http.Request) {
+	chainID := chi.URLParam(r, "chain")
+	if _, ok := h.manager.GetChain(chainID); !ok {
+		writeError(w, http.StatusNotFound, "chain not found")
+		return
+	}
+	if err := h.gasCache.Reset(r.Context(), chainID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type chainStatusJSON struct {
+	Suspended           bool   `json:"suspended"`
+	SuspendReason       string `json:"suspend_reason,omitempty"`
+	MultiSendDisabled   bool   `json:"multisend_disabled"`
+	SendFailStreak      int32  `json:"send_fail_streak"`
+	MultiSendFailStreak int32  `json:"multisend_fail_streak"`
+}
+
+// ChainStatusGet handles GET /admin/chains/{chain}/status.
+func (h *Handler) ChainStatusGet(w http.ResponseWriter, r *http.Request) {
+	chainID := chi.URLParam(r, "chain")
+	c, ok := h.manager.GetChain(chainID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "chain not found")
+		return
+	}
+	snap := c.ChainStatus()
+	writeJSON(w, http.StatusOK, chainStatusJSON{
+		Suspended:           snap.Suspended,
+		SuspendReason:       snap.SuspendReason,
+		MultiSendDisabled:   snap.MultiSendDisabled,
+		SendFailStreak:      snap.SendFailStreak,
+		MultiSendFailStreak: snap.MultiSendFailStreak,
+	})
+}
+
+// ChainResume handles POST /admin/chains/{chain}/resume.
+func (h *Handler) ChainResume(w http.ResponseWriter, r *http.Request) {
+	chainID := chi.URLParam(r, "chain")
+	c, ok := h.manager.GetChain(chainID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "chain not found")
+		return
+	}
+	if !c.ChainStatus().Suspended {
+		writeError(w, http.StatusConflict, "chain is not suspended")
+		return
+	}
+	c.Resume()
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
