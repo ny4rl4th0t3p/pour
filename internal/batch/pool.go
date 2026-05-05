@@ -101,7 +101,7 @@ func (p *Pool) MarkHealthy(keyIndex uint32) {
 func (p *Pool) Healthy() []*Distributor {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	var out []*Distributor
+	out := make([]*Distributor, 0, len(p.distributors))
 	for _, d := range p.distributors {
 		if d.status == StatusHealthy {
 			out = append(out, d)

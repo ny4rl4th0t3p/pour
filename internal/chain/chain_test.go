@@ -16,23 +16,31 @@ import (
 // ----- stub broadcaster -----
 
 type stubBroadcaster struct {
-	sendResult  *tx.BroadcastResult
-	sendErr     error
-	multiResult *tx.BroadcastResult
-	multiErr    error
-	// counts for inspection
-	sendCalls  int
-	multiCalls int
+	sendResult    *tx.BroadcastResult
+	sendErr       error
+	multiResult   *tx.BroadcastResult
+	multiErr      error
+	balanceResult tx.Coin
+	balanceErr    error
+	// counts and captured args for inspection
+	sendCalls   int
+	multiCalls  int
+	lastSendReq tx.SendRequest
 }
 
-func (s *stubBroadcaster) BuildAndBroadcast(_ context.Context, _ tx.SendRequest) (*tx.BroadcastResult, error) {
+func (s *stubBroadcaster) BuildAndBroadcast(_ context.Context, req tx.SendRequest) (*tx.BroadcastResult, error) {
 	s.sendCalls++
+	s.lastSendReq = req
 	return s.sendResult, s.sendErr
 }
 
 func (s *stubBroadcaster) BuildAndBroadcastMulti(_ context.Context, _ tx.BatchSendRequest) (*tx.BroadcastResult, error) {
 	s.multiCalls++
 	return s.multiResult, s.multiErr
+}
+
+func (s *stubBroadcaster) QueryBalance(_ context.Context, _, _ string) (tx.Coin, error) {
+	return s.balanceResult, s.balanceErr
 }
 
 func (*stubBroadcaster) Close() error { return nil }
@@ -343,4 +351,86 @@ func (b *countingBroadcaster) BuildAndBroadcastMulti(_ context.Context, _ tx.Bat
 	return nil, errors.New("unexpected extra call")
 }
 
+func (*countingBroadcaster) QueryBalance(_ context.Context, _, _ string) (tx.Coin, error) {
+	return tx.Coin{}, nil
+}
+
 func (*countingBroadcaster) Close() error { return nil }
+
+// ----- refill tests -----
+
+func newRefillChain(stub *stubBroadcaster, threshold tx.Coin, distributorAddrs []string) *Chain {
+	return &Chain{
+		info:             &chainregistry.ChainInfo{ChainID: "test-1"},
+		client:           stub,
+		holderAddr:       "cosmos1holder",
+		distributorAddrs: distributorAddrs,
+		refillThreshold:  threshold,
+		refillInterval:   time.Minute,
+		log:              slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func TestRefillNow_belowThreshold(t *testing.T) {
+	stub := &stubBroadcaster{
+		balanceResult: tx.Coin{Denom: "uatom", Amount: "1000000"},
+		sendResult:    &tx.BroadcastResult{TxHash: "abc"},
+	}
+	threshold := tx.Coin{Denom: "uatom", Amount: "5000000"}
+	c := newRefillChain(stub, threshold, []string{"cosmos1dist1"})
+
+	if err := c.RefillNow(context.Background(), 1); err != nil {
+		t.Fatalf("RefillNow: %v", err)
+	}
+	if stub.sendCalls != 1 {
+		t.Errorf("sendCalls = %d, want 1", stub.sendCalls)
+	}
+	if stub.lastSendReq.KeyIndex != 0 {
+		t.Errorf("send from key index %d, want 0 (holder)", stub.lastSendReq.KeyIndex)
+	}
+	if stub.lastSendReq.ToAddress != "cosmos1dist1" {
+		t.Errorf("send to %q, want cosmos1dist1", stub.lastSendReq.ToAddress)
+	}
+	// top-up = 5000000 - 1000000 = 4000000
+	if got := stub.lastSendReq.Coins[0].Amount; got != "4000000" {
+		t.Errorf("top-up amount = %q, want 4000000", got)
+	}
+}
+
+func TestRefillNow_aboveThreshold(t *testing.T) {
+	stub := &stubBroadcaster{
+		balanceResult: tx.Coin{Denom: "uatom", Amount: "10000000"},
+	}
+	threshold := tx.Coin{Denom: "uatom", Amount: "5000000"}
+	c := newRefillChain(stub, threshold, []string{"cosmos1dist1"})
+
+	if err := c.RefillNow(context.Background(), 1); err != nil {
+		t.Fatalf("RefillNow: %v", err)
+	}
+	if stub.sendCalls != 0 {
+		t.Errorf("sendCalls = %d, want 0 (balance above threshold)", stub.sendCalls)
+	}
+}
+
+func TestRefillNow_invalidKeyIndex(t *testing.T) {
+	stub := &stubBroadcaster{}
+	c := newRefillChain(stub, tx.Coin{Denom: "uatom", Amount: "1000000"}, []string{"cosmos1dist1"})
+
+	if err := c.RefillNow(context.Background(), 0); err == nil {
+		t.Error("expected error for key index 0")
+	}
+	if err := c.RefillNow(context.Background(), 2); err == nil {
+		t.Error("expected error for key index out of range")
+	}
+}
+
+func TestRefillNow_queryError(t *testing.T) {
+	stub := &stubBroadcaster{
+		balanceErr: errors.New("node unavailable"),
+	}
+	c := newRefillChain(stub, tx.Coin{Denom: "uatom", Amount: "1000000"}, []string{"cosmos1dist1"})
+
+	if err := c.RefillNow(context.Background(), 1); err == nil {
+		t.Error("expected error when QueryBalance fails")
+	}
+}

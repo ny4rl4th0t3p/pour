@@ -118,11 +118,13 @@ type ChainConfig struct {
 	// MaxQueueDepth: per-distributor queue cap. 0 = default (500).
 	// RefillThreshold: minimum distributor balance before holder tops it up (coin string).
 	//   Empty = computed at startup as drip.anonymous × Distributors × 10.
+	// RefillInterval: how often to check distributor balances. Default "1m".
 	Distributors          int    `koanf:"distributors"`
 	BatchWindow           string `koanf:"batch_window"`
 	MaxRecipientsPerBatch int    `koanf:"max_recipients_per_batch"`
 	MaxQueueDepth         int    `koanf:"max_queue_depth"`
 	RefillThreshold       string `koanf:"refill_threshold"`
+	RefillInterval        string `koanf:"refill_interval"`
 }
 
 // IsEnabled reports whether the chain is explicitly enabled.
@@ -166,6 +168,21 @@ func (c *ChainConfig) MaxRecipientsPerBatchOrDefault() int {
 		return DefaultMaxRecipientsPerBatch
 	}
 	return c.MaxRecipientsPerBatch
+}
+
+// RefillIntervalOrDefault parses RefillInterval, returning 1m when empty.
+func (c *ChainConfig) RefillIntervalOrDefault() (time.Duration, error) {
+	if c.RefillInterval == "" {
+		return time.Minute, nil
+	}
+	d, err := time.ParseDuration(c.RefillInterval)
+	if err != nil {
+		return 0, fmt.Errorf("config: chain %q: refill_interval %q: %w", c.ChainID, c.RefillInterval, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("config: chain %q: refill_interval must be positive", c.ChainID)
+	}
+	return d, nil
 }
 
 // MaxQueueDepthOrDefault returns MaxQueueDepth, defaulting to DefaultMaxQueueDepth when 0.
@@ -248,24 +265,8 @@ func validateChain(i int, chain *ChainConfig) error {
 			return fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
 		}
 	}
-	if chain.Distributors < 0 {
-		return fmt.Errorf("config: chain %q: distributors must be >= 0", chain.ChainID)
-	}
-	if chain.BatchWindow != "" {
-		if _, err := chain.BatchWindowDuration(); err != nil {
-			return err
-		}
-	}
-	if chain.MaxRecipientsPerBatch < 0 {
-		return fmt.Errorf("config: chain %q: max_recipients_per_batch must be >= 0", chain.ChainID)
-	}
-	if chain.MaxQueueDepth < 0 {
-		return fmt.Errorf("config: chain %q: max_queue_depth must be >= 0", chain.ChainID)
-	}
-	if chain.RefillThreshold != "" {
-		if _, err := ParseCoin(chain.RefillThreshold); err != nil {
-			return fmt.Errorf("config: chain %q: refill_threshold: %w", chain.ChainID, err)
-		}
+	if err := validateConcurrencyFields(chain); err != nil {
+		return err
 	}
 	if chain.Standalone {
 		if err := validateStandalone(chain); err != nil {
@@ -302,6 +303,34 @@ func validateStandalone(chain *ChainConfig) error {
 	}
 	if len(chain.FeeTokens) == 0 {
 		return fmt.Errorf("config: standalone chain %q: at least one fee_tokens entry is required", chain.ChainID)
+	}
+	return nil
+}
+
+func validateConcurrencyFields(chain *ChainConfig) error {
+	if chain.Distributors < 0 {
+		return fmt.Errorf("config: chain %q: distributors must be >= 0", chain.ChainID)
+	}
+	if chain.BatchWindow != "" {
+		if _, err := chain.BatchWindowDuration(); err != nil {
+			return err
+		}
+	}
+	if chain.MaxRecipientsPerBatch < 0 {
+		return fmt.Errorf("config: chain %q: max_recipients_per_batch must be >= 0", chain.ChainID)
+	}
+	if chain.MaxQueueDepth < 0 {
+		return fmt.Errorf("config: chain %q: max_queue_depth must be >= 0", chain.ChainID)
+	}
+	if chain.RefillThreshold != "" {
+		if _, err := ParseCoin(chain.RefillThreshold); err != nil {
+			return fmt.Errorf("config: chain %q: refill_threshold: %w", chain.ChainID, err)
+		}
+	}
+	if chain.RefillInterval != "" {
+		if _, err := chain.RefillIntervalOrDefault(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

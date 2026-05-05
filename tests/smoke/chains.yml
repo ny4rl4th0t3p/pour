@@ -16,6 +16,7 @@ chains:
       - denom: stake
         average_gas_price: "0.025"
         low_gas_price: "0.01"
+    distributors: 1
     drip:
       anonymous: "1000000stake"
       max_per_address_per_day: "100000000stake"

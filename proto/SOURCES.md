@@ -49,7 +49,7 @@ From cosmos-sdk:
 
 - `amino/amino.proto`
 - `cosmos/auth/v1beta1/auth.proto`, `query.proto`
-- `cosmos/bank/v1beta1/bank.proto`, `tx.proto`
+- `cosmos/bank/v1beta1/bank.proto`, `tx.proto`, `query.proto`
 - `cosmos/base/abci/v1beta1/abci.proto` *(modified — see Local modifications)*
 - `cosmos/base/query/v1beta1/pagination.proto`
 - `cosmos/base/v1beta1/coin.proto`
