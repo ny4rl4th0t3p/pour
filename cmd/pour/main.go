@@ -129,7 +129,6 @@ func (c *ServeCmd) Run() error {
 		Store:           db,
 		Limiter:         limiter,
 		Broadcasters:    broadcasters,
-		GasCache:        gc,
 		AdminHandler:    adminRouter,
 		Mnemonic:        mnemonic,
 		Version:         version,
