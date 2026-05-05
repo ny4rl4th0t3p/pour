@@ -51,7 +51,7 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusTooManyRequests, err.Error())
 			return
 		}
-		slog.Error("rate limit check failed", "error", err, "ip", ip, "chain_id", req.ChainID)
+		slog.Error("rate limit check failed", "error", err, "ip", ip, "chain_id", req.ChainID) //nolint:gosec // ip sanitized by net.SplitHostPort
 		writeError(w, http.StatusInternalServerError, "rate limit check failed")
 		return
 	}

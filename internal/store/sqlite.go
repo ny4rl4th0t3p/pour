@@ -20,7 +20,10 @@ type Store struct {
 	db *sql.DB
 }
 
-const dsnPragmas = "_pragma=busy_timeout(5000)" + "&_pragma=journal_mode(WAL)" + "&_pragma=synchronous(NORMAL)" + "&_pragma=foreign_keys(ON)"
+const dsnPragmas = "_pragma=busy_timeout(5000)" +
+	"&_pragma=journal_mode(WAL)" +
+	"&_pragma=synchronous(NORMAL)" +
+	"&_pragma=foreign_keys(ON)"
 
 // buildDSN converts a plain path or ":memory:" into a SQLite URI DSN with
 // per-connection pragmas embedded, so every connection in the pool picks them up.

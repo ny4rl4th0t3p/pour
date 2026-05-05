@@ -270,7 +270,9 @@ func (c *Client) recordSuccess(ctx context.Context, msgType string, gasUsed uint
 	if c.opts.GasCache == nil || gasUsed == 0 {
 		return
 	}
-	if err := c.opts.GasCache.RecordSuccess(ctx, c.chain.ChainID, msgType, gasUsed, outputCount, est.Fee.Denom, est.GasPriceAmount); err != nil {
+	if err := c.opts.GasCache.RecordSuccess(
+		ctx, c.chain.ChainID, msgType, gasUsed, outputCount, est.Fee.Denom, est.GasPriceAmount,
+	); err != nil {
 		slog.ErrorContext(ctx, "tx: record gas success", "chain", c.chain.ChainID, "error", err)
 	}
 }
