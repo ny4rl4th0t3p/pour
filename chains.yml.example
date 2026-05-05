@@ -22,9 +22,9 @@ chains:
       anonymous: 1000000uosmo                 # REQUIRED
       max_per_address_per_day: 50000000uosmo  # REQUIRED
 
-    ## Concurrency — all optional, defaults shown
-    # distributors: 1               # signing accounts (indices 1..N); 0 = default (1)
-    # batch_window: 5s              # flush interval; "0" = synchronous/no-batch mode
-    # max_recipients_per_batch: 25  # outputs per MsgMultiSend; 0 = default (25)
-    # max_queue_depth: 500          # per-distributor queue cap; 0 = default (500)
+    ## Concurrency — optional; production-grade example shown below
+    distributors: 3               # signing accounts (indices 1..N); default 1
+    batch_window: 5s              # flush interval; "0" = synchronous/no-batch mode; default 5s
+    max_recipients_per_batch: 25  # outputs per MsgMultiSend; default 25
+    # max_queue_depth: 500          # per-distributor queue cap; default 500
     # refill_threshold: ""          # min distributor balance; empty = drip.anonymous × distributors × 10

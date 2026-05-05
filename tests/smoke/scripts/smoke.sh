@@ -112,12 +112,38 @@ CHAINS=$(curl -sf "$BASE/v1/chains")
 echo "    $CHAINS"
 echo "$CHAINS" | grep -q '"chain_id":"test-1"'
 
-echo "==> rate limit (second pour from same IP; limit=1 in smoke chains.yml)"
+echo "==> batch: 2 concurrent pours (exercises batch window coalescing)"
+BATCH_BASE=$POST_BAL
+EXPECTED_BATCH=$((BATCH_BASE + 2000000))
+curl -s -X POST "$BASE/v1/pour" \
+  -H 'Content-Type: application/json' \
+  -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}" \
+  -o /tmp/bp1.json &
+curl -s -X POST "$BASE/v1/pour" \
+  -H 'Content-Type: application/json' \
+  -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}" \
+  -o /tmp/bp2.json &
+wait
+grep -q '"status"' /tmp/bp1.json || { echo "FAIL: batch pour 1 bad response"; cat /tmp/bp1.json; exit 1; }
+grep -q '"status"' /tmp/bp2.json || { echo "FAIL: batch pour 2 bad response"; cat /tmp/bp2.json; exit 1; }
+echo "==> waiting for batch pours to settle"
+i=0
+while [ "$i" -lt 30 ]; do
+  BATCH_BAL=$(stake_balance "$RECIPIENT")
+  BATCH_BAL=${BATCH_BAL:-0}
+  [ "$BATCH_BAL" -eq "$EXPECTED_BATCH" ] && break
+  i=$((i + 1))
+  [ "$i" -eq 30 ] && { echo "TIMEOUT: balance never reached ${EXPECTED_BATCH}stake (last: ${BATCH_BAL}stake)"; exit 1; }
+  sleep 1
+done
+echo "    balance after batch: ${BATCH_BAL}stake"
+
+echo "==> rate limit (4th pour from same IP; limit=3 in smoke chains.yml)"
 RESP2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/v1/pour" \
   -H 'Content-Type: application/json' \
   -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}")
 if [ "$RESP2" != "429" ]; then
-  echo "FAIL: expected 429 on second pour from same IP, got $RESP2"
+  echo "FAIL: expected 429 on 4th pour from same IP, got $RESP2"
   exit 1
 fi
 
