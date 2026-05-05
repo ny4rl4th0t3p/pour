@@ -87,6 +87,7 @@ func TestMigrate_order(t *testing.T) {
 		"003_api_keys.sql",
 		"004_chain_gas_cache.sql",
 		"005_pending_changes.sql",
+		"006_gas_cache_msg_type.sql",
 	}
 	var got []string
 	for rows.Next() {
