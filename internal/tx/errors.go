@@ -3,6 +3,7 @@ package tx
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	abciv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/base/abci/v1beta1"
 )
@@ -26,6 +27,21 @@ const (
 	abciCodeInsufficientFee   = 13
 	abciCodeWrongSequence     = 32
 )
+
+// IsSequenceMismatch returns true when err represents a sequence number conflict.
+// Covers both the ABCI code 32 path and gRPC status strings from chains that surface
+// the error before broadcast acceptance.
+func IsSequenceMismatch(err error) bool {
+	if errors.Is(err, ErrSequenceMismatch) {
+		return true
+	}
+	return err != nil && strings.Contains(err.Error(), "account sequence mismatch")
+}
+
+// IsInsufficientFee returns true when err indicates the submitted fee was too low.
+func IsInsufficientFee(err error) bool {
+	return errors.Is(err, ErrInsufficientFee)
+}
 
 // classifyChainError maps an ABCI response code to a sentinel error.
 func classifyChainError(resp *abciv1beta1.TxResponse) error {

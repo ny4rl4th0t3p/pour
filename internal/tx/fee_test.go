@@ -39,10 +39,10 @@ func TestEstimateFee_trustedCache(t *testing.T) {
 		GasPriceAmount: "0.025",
 		SampleCount:    5, // trusted
 	}
-	req := SendRequest{GasCache: &stubCache{estimate: cached}}
+	opts := feeOpts{GasCache: &stubCache{estimate: cached}, OutputCount: 1, MsgType: MsgTypeSend}
 	chain := &chainregistry.ChainInfo{ChainID: "osmosis-1"}
 
-	est, err := estimateFee(t.Context(), svc, chain, msgs, req, nil)
+	est, err := estimateFee(t.Context(), svc, chain, msgs, opts, nil)
 	if err != nil {
 		t.Fatalf("estimateFee: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestEstimateFee_simulate(t *testing.T) {
 		FeeTokens: []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
 	}
 
-	est, err := estimateFee(t.Context(), svc, chain, msgs, SendRequest{}, nil)
+	est, err := estimateFee(t.Context(), svc, chain, msgs, feeOpts{OutputCount: 1, MsgType: MsgTypeSend}, nil)
 	if err != nil {
 		t.Fatalf("estimateFee: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestEstimateFee_registryFallback(t *testing.T) {
 		FeeTokens: []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
 	}
 
-	est, err := estimateFee(t.Context(), svc, chain, msgs, SendRequest{}, nil)
+	est, err := estimateFee(t.Context(), svc, chain, msgs, feeOpts{OutputCount: 1, MsgType: MsgTypeSend}, nil)
 	if err != nil {
 		t.Fatalf("estimateFee: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestEstimateFee_staticDefaults(t *testing.T) {
 	msgs := oneMsgSend(t)
 	chain := &chainregistry.ChainInfo{ChainID: "osmosis-1"} // no FeeTokens
 
-	est, err := estimateFee(t.Context(), svc, chain, msgs, SendRequest{}, nil)
+	est, err := estimateFee(t.Context(), svc, chain, msgs, feeOpts{OutputCount: 1, MsgType: MsgTypeSend}, nil)
 	if err != nil {
 		t.Fatalf("estimateFee: %v", err)
 	}
@@ -116,14 +116,20 @@ func TestEstimateFee_staticDefaults(t *testing.T) {
 	}
 }
 
-// stubCache is a minimal GasCache implementation for tests.
+// stubCache is a minimal GasCache implementation for fee estimation tests.
 type stubCache struct {
 	estimate *CachedEstimate
 }
 
-func (s *stubCache) Lookup(_ context.Context, _ string) (*CachedEstimate, bool) {
+func (s *stubCache) Lookup(_ context.Context, _, _ string) (*CachedEstimate, bool) {
 	if s.estimate == nil {
 		return nil, false
 	}
 	return s.estimate, true
 }
+
+func (*stubCache) RecordSuccess(_ context.Context, _, _ string, _ uint64, _ int, _, _ string) error {
+	return nil
+}
+
+func (*stubCache) RecordFailure(_ context.Context, _, _, _ string) error { return nil }

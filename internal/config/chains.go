@@ -111,14 +111,69 @@ type ChainConfig struct {
 	// Drip is required for enabled chains.
 	Drip DripConfig `koanf:"drip"`
 
-	// v0.3.0 fields — parsed but unused until then.
-	Distributors int    `koanf:"distributors"`
-	BatchWindow  string `koanf:"batch_window"`
+	// Concurrency fields.
+	// Distributors: number of signing accounts (indices 1..N). 0 = default (1).
+	// BatchWindow: flush interval; "0" disables batching (synchronous mode). Default "5s".
+	// MaxRecipientsPerBatch: cap per MsgMultiSend. 0 = default (100).
+	// MaxQueueDepth: per-distributor queue cap. 0 = default (500).
+	// RefillThreshold: minimum distributor balance before holder tops it up (coin string).
+	//   Empty = computed at startup as drip.anonymous × Distributors × 10.
+	Distributors          int    `koanf:"distributors"`
+	BatchWindow           string `koanf:"batch_window"`
+	MaxRecipientsPerBatch int    `koanf:"max_recipients_per_batch"`
+	MaxQueueDepth         int    `koanf:"max_queue_depth"`
+	RefillThreshold       string `koanf:"refill_threshold"`
 }
 
 // IsEnabled reports whether the chain is explicitly enabled.
 func (c *ChainConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
+}
+
+// DistributorCount returns the effective number of distributors, defaulting to 1 when 0.
+func (c *ChainConfig) DistributorCount() int {
+	if c.Distributors <= 0 {
+		return 1
+	}
+	return c.Distributors
+}
+
+// BatchWindowDuration parses BatchWindow, returning 5s when empty and 0 when "0" (sync mode).
+func (c *ChainConfig) BatchWindowDuration() (time.Duration, error) {
+	if c.BatchWindow == "" {
+		return 5 * time.Second, nil
+	}
+	d, err := time.ParseDuration(c.BatchWindow)
+	if err != nil {
+		return 0, fmt.Errorf("config: chain %q: batch_window %q: %w", c.ChainID, c.BatchWindow, err)
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("config: chain %q: batch_window %q: must be non-negative", c.ChainID, c.BatchWindow)
+	}
+	return d, nil
+}
+
+const (
+	// DefaultMaxRecipientsPerBatch keeps gas cost and tx size within conservative chain limits.
+	DefaultMaxRecipientsPerBatch = 25
+	// DefaultMaxQueueDepth is the per-distributor queue cap when not configured.
+	DefaultMaxQueueDepth = 500
+)
+
+// MaxRecipientsPerBatchOrDefault returns MaxRecipientsPerBatch, defaulting to DefaultMaxRecipientsPerBatch when 0.
+func (c *ChainConfig) MaxRecipientsPerBatchOrDefault() int {
+	if c.MaxRecipientsPerBatch <= 0 {
+		return DefaultMaxRecipientsPerBatch
+	}
+	return c.MaxRecipientsPerBatch
+}
+
+// MaxQueueDepthOrDefault returns MaxQueueDepth, defaulting to DefaultMaxQueueDepth when 0.
+func (c *ChainConfig) MaxQueueDepthOrDefault() int {
+	if c.MaxQueueDepth <= 0 {
+		return DefaultMaxQueueDepth
+	}
+	return c.MaxQueueDepth
 }
 
 // EndpointsConfig holds endpoint overrides for a chain.
@@ -172,42 +227,67 @@ func LoadChains(path string) (*ChainsConfig, error) {
 	}
 
 	for i := range cfg.Chains {
-		chain := &cfg.Chains[i]
-		if chain.ChainID == "" {
-			return nil, fmt.Errorf("config: chain at index %d: chain_id is required", i)
-		}
-		if chain.BlockTime != nil {
-			d, err := time.ParseDuration(*chain.BlockTime)
-			if err != nil {
-				return nil, fmt.Errorf("config: chain %q: block_time: %w", chain.ChainID, err)
-			}
-			if d <= 0 {
-				return nil, fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
-			}
-		}
-		if chain.Standalone {
-			if err := validateStandalone(chain); err != nil {
-				return nil, err
-			}
-		}
-		if !chain.IsEnabled() {
-			continue
-		}
-		if chain.Drip.Anonymous == "" {
-			return nil, fmt.Errorf("config: chain %q: drip.anonymous is required", chain.ChainID)
-		}
-		if _, err := ParseCoin(chain.Drip.Anonymous); err != nil {
-			return nil, fmt.Errorf("config: chain %q: drip.anonymous: %w", chain.ChainID, err)
-		}
-		if chain.Drip.MaxPerAddressPerDay == "" {
-			return nil, fmt.Errorf("config: chain %q: drip.max_per_address_per_day is required", chain.ChainID)
-		}
-		if _, err := ParseCoin(chain.Drip.MaxPerAddressPerDay); err != nil {
-			return nil, fmt.Errorf("config: chain %q: drip.max_per_address_per_day: %w", chain.ChainID, err)
+		if err := validateChain(i, &cfg.Chains[i]); err != nil {
+			return nil, err
 		}
 	}
 
 	return &cfg, nil
+}
+
+func validateChain(i int, chain *ChainConfig) error {
+	if chain.ChainID == "" {
+		return fmt.Errorf("config: chain at index %d: chain_id is required", i)
+	}
+	if chain.BlockTime != nil {
+		d, err := time.ParseDuration(*chain.BlockTime)
+		if err != nil {
+			return fmt.Errorf("config: chain %q: block_time: %w", chain.ChainID, err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
+		}
+	}
+	if chain.Distributors < 0 {
+		return fmt.Errorf("config: chain %q: distributors must be >= 0", chain.ChainID)
+	}
+	if chain.BatchWindow != "" {
+		if _, err := chain.BatchWindowDuration(); err != nil {
+			return err
+		}
+	}
+	if chain.MaxRecipientsPerBatch < 0 {
+		return fmt.Errorf("config: chain %q: max_recipients_per_batch must be >= 0", chain.ChainID)
+	}
+	if chain.MaxQueueDepth < 0 {
+		return fmt.Errorf("config: chain %q: max_queue_depth must be >= 0", chain.ChainID)
+	}
+	if chain.RefillThreshold != "" {
+		if _, err := ParseCoin(chain.RefillThreshold); err != nil {
+			return fmt.Errorf("config: chain %q: refill_threshold: %w", chain.ChainID, err)
+		}
+	}
+	if chain.Standalone {
+		if err := validateStandalone(chain); err != nil {
+			return err
+		}
+	}
+	if !chain.IsEnabled() {
+		return nil
+	}
+	if chain.Drip.Anonymous == "" {
+		return fmt.Errorf("config: chain %q: drip.anonymous is required", chain.ChainID)
+	}
+	if _, err := ParseCoin(chain.Drip.Anonymous); err != nil {
+		return fmt.Errorf("config: chain %q: drip.anonymous: %w", chain.ChainID, err)
+	}
+	if chain.Drip.MaxPerAddressPerDay == "" {
+		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day is required", chain.ChainID)
+	}
+	if _, err := ParseCoin(chain.Drip.MaxPerAddressPerDay); err != nil {
+		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day: %w", chain.ChainID, err)
+	}
+	return nil
 }
 
 func validateStandalone(chain *ChainConfig) error {

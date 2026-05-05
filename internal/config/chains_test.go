@@ -462,6 +462,197 @@ func TestToChainInfo_withKeyAlgoAndNetworkType(t *testing.T) {
 	}
 }
 
+// ----- DistributorCount -----
+
+func TestDistributorCount_zero(t *testing.T) {
+	c := &ChainConfig{}
+	if got := c.DistributorCount(); got != 1 {
+		t.Errorf("zero: got %d, want 1", got)
+	}
+}
+
+func TestDistributorCount_negative(t *testing.T) {
+	c := &ChainConfig{Distributors: -1}
+	if got := c.DistributorCount(); got != 1 {
+		t.Errorf("negative: got %d, want 1", got)
+	}
+}
+
+func TestDistributorCount_explicit(t *testing.T) {
+	c := &ChainConfig{Distributors: 3}
+	if got := c.DistributorCount(); got != 3 {
+		t.Errorf("explicit: got %d, want 3", got)
+	}
+}
+
+// ----- BatchWindowDuration -----
+
+func TestBatchWindowDuration_empty(t *testing.T) {
+	c := &ChainConfig{ChainID: "x"}
+	d, err := c.BatchWindowDuration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 5*time.Second {
+		t.Errorf("empty: got %v, want 5s", d)
+	}
+}
+
+func TestBatchWindowDuration_zero(t *testing.T) {
+	c := &ChainConfig{ChainID: "x", BatchWindow: "0"}
+	d, err := c.BatchWindowDuration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 0 {
+		t.Errorf("zero: got %v, want 0", d)
+	}
+}
+
+func TestBatchWindowDuration_valid(t *testing.T) {
+	c := &ChainConfig{ChainID: "x", BatchWindow: "10s"}
+	d, err := c.BatchWindowDuration()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 10*time.Second {
+		t.Errorf("valid: got %v, want 10s", d)
+	}
+}
+
+func TestBatchWindowDuration_invalid(t *testing.T) {
+	c := &ChainConfig{ChainID: "x", BatchWindow: "notaduration"}
+	if _, err := c.BatchWindowDuration(); err == nil {
+		t.Fatal("expected error for invalid batch_window")
+	}
+}
+
+func TestBatchWindowDuration_negative(t *testing.T) {
+	c := &ChainConfig{ChainID: "x", BatchWindow: "-1s"}
+	if _, err := c.BatchWindowDuration(); err == nil {
+		t.Fatal("expected error for negative batch_window")
+	}
+}
+
+// ----- MaxRecipientsPerBatchOrDefault -----
+
+func TestMaxRecipientsPerBatchOrDefault_zero(t *testing.T) {
+	c := &ChainConfig{}
+	if got := c.MaxRecipientsPerBatchOrDefault(); got != DefaultMaxRecipientsPerBatch {
+		t.Errorf("zero: got %d, want %d", got, DefaultMaxRecipientsPerBatch)
+	}
+}
+
+func TestMaxRecipientsPerBatchOrDefault_explicit(t *testing.T) {
+	c := &ChainConfig{MaxRecipientsPerBatch: 50}
+	if got := c.MaxRecipientsPerBatchOrDefault(); got != 50 {
+		t.Errorf("explicit: got %d, want 50", got)
+	}
+}
+
+// ----- MaxQueueDepthOrDefault -----
+
+func TestMaxQueueDepthOrDefault_zero(t *testing.T) {
+	c := &ChainConfig{}
+	if got := c.MaxQueueDepthOrDefault(); got != DefaultMaxQueueDepth {
+		t.Errorf("zero: got %d, want %d", got, DefaultMaxQueueDepth)
+	}
+}
+
+func TestMaxQueueDepthOrDefault_explicit(t *testing.T) {
+	c := &ChainConfig{MaxQueueDepth: 200}
+	if got := c.MaxQueueDepthOrDefault(); got != 200 {
+		t.Errorf("explicit: got %d, want 200", got)
+	}
+}
+
+// ----- LoadChains concurrency field validation -----
+
+func TestLoadChains_invalidBatchWindow(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: osmosis-1
+    batch_window: "notaduration"
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for invalid batch_window")
+	}
+}
+
+func TestLoadChains_negativeBatchWindow(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: osmosis-1
+    batch_window: "-5s"
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for negative batch_window")
+	}
+}
+
+func TestLoadChains_negativeDistributors(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: osmosis-1
+    distributors: -1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for negative distributors")
+	}
+}
+
+func TestLoadChains_invalidRefillThreshold(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: osmosis-1
+    refill_threshold: "notacoin"
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for invalid refill_threshold")
+	}
+}
+
+func TestLoadChains_concurrencyFields(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: osmosis-1
+    enabled: true
+    distributors: 3
+    batch_window: "5s"
+    max_recipients_per_batch: 50
+    max_queue_depth: 200
+    refill_threshold: "5000000uosmo"
+    drip:
+      anonymous: "1000000uosmo"
+      max_per_address_per_day: "50000000uosmo"
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	c := cfg.Chains[0]
+	if c.DistributorCount() != 3 {
+		t.Errorf("DistributorCount: got %d, want 3", c.DistributorCount())
+	}
+	d, err := c.BatchWindowDuration()
+	if err != nil || d != 5*time.Second {
+		t.Errorf("BatchWindowDuration: got %v %v, want 5s nil", d, err)
+	}
+	if c.MaxRecipientsPerBatchOrDefault() != 50 {
+		t.Errorf("MaxRecipientsPerBatch: got %d, want 50", c.MaxRecipientsPerBatchOrDefault())
+	}
+	if c.MaxQueueDepthOrDefault() != 200 {
+		t.Errorf("MaxQueueDepth: got %d, want 200", c.MaxQueueDepthOrDefault())
+	}
+	if c.RefillThreshold != "5000000uosmo" {
+		t.Errorf("RefillThreshold: got %q", c.RefillThreshold)
+	}
+}
+
 func TestParseCoin(t *testing.T) {
 	tests := []struct {
 		input   string
