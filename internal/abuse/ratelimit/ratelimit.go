@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/store"
@@ -26,6 +27,7 @@ func (e *ErrRateLimitExceeded) Error() string {
 
 // Limiter implements an IP-based sliding-window rate limiter backed by SQLite.
 type Limiter struct {
+	mu                sync.Mutex
 	db                *sql.DB
 	requestsPerWindow int
 	window            time.Duration
@@ -44,6 +46,9 @@ func New(s *store.Store, requestsPerWindow int, window time.Duration) *Limiter {
 // If under the limit, the request is recorded and nil is returned.
 // If over the limit, *ErrRateLimitExceeded is returned and nothing is recorded.
 func (l *Limiter) Check(ctx context.Context, ip, chainID string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	tx, err := l.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ratelimit: begin tx: %w", err)

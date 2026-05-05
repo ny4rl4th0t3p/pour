@@ -51,12 +51,14 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusTooManyRequests, err.Error())
 			return
 		}
+		slog.Error("rate limit check failed", "error", err, "ip", ip, "chain_id", req.ChainID)
 		writeError(w, http.StatusInternalServerError, "rate limit check failed")
 		return
 	}
 
 	coin, err := config.ParseCoin(snap.Drip.Anonymous)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "pour: invalid drip config", "chain_id", req.ChainID, "error", err)
 		writeError(w, http.StatusInternalServerError, "invalid drip config")
 		return
 	}
@@ -146,11 +148,15 @@ func (h *Handler) awaitDrip(ctx context.Context, chainID string, dripID int64, c
 	completedAt := time.Now().Unix()
 	if res.Err != nil {
 		pourRequestsTotal.WithLabelValues(chainID, "failed").Inc()
-		_ = h.dripStore.UpdateDrip(writeCtx, dripID, pourapi.StatusFailed, "", completedAt)
+		if err := h.dripStore.UpdateDrip(writeCtx, dripID, pourapi.StatusFailed, "", completedAt); err != nil {
+			slog.ErrorContext(ctx, "awaitDrip: update drip failed", "drip_id", dripID, "error", err)
+		}
 		return
 	}
 	pourRequestsTotal.WithLabelValues(chainID, "confirmed").Inc()
-	_ = h.dripStore.UpdateDrip(writeCtx, dripID, pourapi.StatusConfirmed, res.TxHash, completedAt)
+	if err := h.dripStore.UpdateDrip(writeCtx, dripID, pourapi.StatusConfirmed, res.TxHash, completedAt); err != nil {
+		slog.ErrorContext(ctx, "awaitDrip: update drip confirmed", "drip_id", dripID, "error", err)
+	}
 }
 
 // pourSync handles the synchronous broadcast path (batch_window = "0" or Pourer not set).
