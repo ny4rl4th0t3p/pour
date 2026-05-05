@@ -3,6 +3,7 @@ package tx
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -20,7 +21,7 @@ import (
 
 // Options are optional parameters for New.
 type Options struct {
-	GasCache GasCache     // optional; implemented by internal/gascache in M5
+	GasCache GasCache     // optional; read + write gas cache
 	Logger   *slog.Logger // optional; defaults to slog.Default()
 }
 
@@ -68,7 +69,8 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-// BuildAndBroadcast derives the holder key, builds a MsgSend, signs it, and broadcasts it.
+// BuildAndBroadcast derives the key at req.KeyIndex, builds a MsgSend, signs it, and
+// broadcasts it. Records gas usage to Options.GasCache on success.
 func (c *Client) BuildAndBroadcast(ctx context.Context, req SendRequest) (*BroadcastResult, error) {
 	privKey, err := keys.DerivePrivKey(req.Mnemonic, c.chain.Slip44, req.KeyIndex)
 	if err != nil {
@@ -90,7 +92,9 @@ func (c *Client) BuildAndBroadcast(ctx context.Context, req SendRequest) (*Broad
 		return nil, err
 	}
 
-	estimate, err := estimateFee(ctx, c.txSvc, c.chain, msgs, req, c.opts.Logger)
+	estimate, err := estimateFee(ctx, c.txSvc, c.chain, msgs,
+		feeOpts{GasCache: c.opts.GasCache, OutputCount: 1, MsgType: MsgTypeSend},
+		c.opts.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +106,87 @@ func (c *Client) BuildAndBroadcast(ctx context.Context, req SendRequest) (*Broad
 
 	txHash, err := broadcast(ctx, c.txSvc, txRaw)
 	if err != nil {
+		c.recordFailure(ctx, MsgTypeSend, err)
 		return nil, err
 	}
 
-	return waitForConfirmation(ctx, c.txSvc, txHash)
+	result, err := waitForConfirmation(ctx, c.txSvc, txHash)
+	if err != nil {
+		return nil, err
+	}
+	c.recordSuccess(ctx, MsgTypeSend, result.GasUsed, 1, estimate)
+	return result, nil
+}
+
+// BuildAndBroadcastMulti derives the key at req.KeyIndex, builds a MsgMultiSend with
+// all outputs, signs it, and broadcasts it. Records gas usage to Options.GasCache on success.
+func (c *Client) BuildAndBroadcastMulti(ctx context.Context, req BatchSendRequest) (*BroadcastResult, error) {
+	if len(req.Outputs) == 0 {
+		return nil, fmt.Errorf("tx: BuildAndBroadcastMulti: outputs must not be empty")
+	}
+
+	privKey, err := keys.DerivePrivKey(req.Mnemonic, c.chain.Slip44, req.KeyIndex)
+	if err != nil {
+		return nil, fmt.Errorf("tx: derive key: %w", err)
+	}
+	fromAddr, err := keys.AddressFromPubKey(privKey.PubKey(), c.chain.Bech32Prefix)
+	if err != nil {
+		return nil, fmt.Errorf("tx: derive address: %w", err)
+	}
+
+	msgAny, err := buildMsgMultiSend(fromAddr, req.Outputs)
+	if err != nil {
+		return nil, err
+	}
+	msgs := []*anypb.Any{msgAny}
+
+	account, err := queryAccount(ctx, c.authSvc, fromAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	estimate, err := estimateFee(ctx, c.txSvc, c.chain, msgs,
+		feeOpts{GasCache: c.opts.GasCache, OutputCount: len(req.Outputs), MsgType: MsgTypeMultiSend},
+		c.opts.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	txRaw, err := buildTxRaw(privKey, *account, msgs, estimate, c.chain.ChainID)
+	if err != nil {
+		return nil, err
+	}
+
+	txHash, err := broadcast(ctx, c.txSvc, txRaw)
+	if err != nil {
+		c.recordFailure(ctx, MsgTypeMultiSend, err)
+		return nil, err
+	}
+
+	result, err := waitForConfirmation(ctx, c.txSvc, txHash)
+	if err != nil {
+		return nil, err
+	}
+	c.recordSuccess(ctx, MsgTypeMultiSend, result.GasUsed, len(req.Outputs), estimate)
+	return result, nil
+}
+
+func (c *Client) recordSuccess(ctx context.Context, msgType string, gasUsed uint64, outputCount int, est Estimate) {
+	if c.opts.GasCache == nil || gasUsed == 0 {
+		return
+	}
+	_ = c.opts.GasCache.RecordSuccess(ctx, c.chain.ChainID, msgType, gasUsed, outputCount, est.Fee.Denom, est.GasPriceAmount)
+}
+
+func (c *Client) recordFailure(ctx context.Context, msgType string, err error) {
+	if c.opts.GasCache == nil {
+		return
+	}
+	reason := "broadcast_error"
+	if IsInsufficientFee(err) {
+		reason = "insufficient_fee"
+	} else if errors.Is(err, ErrInsufficientGas) {
+		reason = "out_of_gas"
+	}
+	_ = c.opts.GasCache.RecordFailure(ctx, c.chain.ChainID, msgType, reason)
 }

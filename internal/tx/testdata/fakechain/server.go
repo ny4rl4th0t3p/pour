@@ -38,6 +38,7 @@ type Config struct {
 	// GetTx: confirmed after ConfirmAfter calls (0 = immediately)
 	ConfirmAfter int
 	TxHeight     int64
+	GetTxGasUsed int64 // gas_used in the confirmed TxResponse
 }
 
 // Start registers the fake servers, starts a bufconn listener, and returns a
@@ -135,9 +136,10 @@ func (f *fakeTxSvc) GetTx(_ context.Context, req *txv1beta1.GetTxRequest) (*txv1
 	}
 	return &txv1beta1.GetTxResponse{
 		TxResponse: &abciv1beta1.TxResponse{
-			Txhash: f.cfg.BroadcastTxHash,
-			Height: f.cfg.TxHeight,
-			Code:   0,
+			Txhash:  f.cfg.BroadcastTxHash,
+			Height:  f.cfg.TxHeight,
+			GasUsed: f.cfg.GetTxGasUsed,
+			Code:    0,
 		},
 	}, nil
 }

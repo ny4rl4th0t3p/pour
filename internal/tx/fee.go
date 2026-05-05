@@ -26,8 +26,16 @@ var (
 	gasAdjustCold    = decimal.NewFromFloat(1.5)
 )
 
+// feeOpts carries the parameters that estimateFee needs without polluting the
+// public SendRequest / BatchSendRequest types.
+type feeOpts struct {
+	GasCache    GasCache
+	OutputCount int    // number of recipients; drives gas scaling in static and cache paths
+	MsgType     string // MsgTypeSend or MsgTypeMultiSend; selects the cache row to read
+}
+
 // estimateFee determines the gas limit and fee for a set of messages.
-// Fallback hierarchy (v0.1.0, no operator override):
+// Fallback hierarchy:
 //  1. Trusted cache entry (SampleCount ≥ 5) → 1.3× adjustment
 //  2. Simulate → 1.5× cold-start adjustment
 //  3. Chain registry average gas price + static gas
@@ -37,17 +45,22 @@ func estimateFee(
 	txSvc txv1beta1.ServiceClient,
 	chain *chainregistry.ChainInfo,
 	msgs []*anypb.Any,
-	req SendRequest,
+	opts feeOpts,
 	logger *slog.Logger,
 ) (Estimate, error) {
+	outputCount := opts.OutputCount
+	if outputCount <= 0 {
+		outputCount = 1
+	}
+
 	// 1. Trusted cache.
-	if req.GasCache != nil {
-		if cached, ok := req.GasCache.Lookup(ctx, chain.ChainID); ok && cached.IsTrusted() {
-			baseGas := decimal.NewFromInt(int64(cached.BaseGas + cached.GasPerOutput*uint64(len(msgs))))
+	if opts.GasCache != nil {
+		if cached, ok := opts.GasCache.Lookup(ctx, chain.ChainID, opts.MsgType); ok && cached.IsTrusted() {
+			baseGas := decimal.NewFromInt(int64(cached.BaseGas + cached.GasPerOutput*uint64(outputCount)))
 			gas := baseGas.Mul(gasAdjustTrusted).Ceil().BigInt().Uint64()
 			fee, err := calcFee(gas, cached.GasPriceAmount, cached.FeeDenom)
 			if err == nil {
-				return Estimate{GasLimit: gas, Fee: fee}, nil
+				return Estimate{GasLimit: gas, Fee: fee, GasPriceAmount: cached.GasPriceAmount}, nil
 			}
 		}
 	}
@@ -60,11 +73,12 @@ func estimateFee(
 	// 3. Chain registry average gas price.
 	if len(chain.FeeTokens) > 0 {
 		ft := chain.FeeTokens[0]
-		baseGas := decimal.NewFromInt(int64(defaultBaseGas + defaultGasPerOutput*uint64(len(msgs))))
+		gasPriceStr := ft.AverageGasPrice.String()
+		baseGas := decimal.NewFromInt(int64(defaultBaseGas + defaultGasPerOutput*uint64(outputCount)))
 		gas := baseGas.Mul(gasAdjustCold).Ceil().BigInt().Uint64()
-		fee, err := calcFee(gas, ft.AverageGasPrice.String(), ft.Denom)
+		fee, err := calcFee(gas, gasPriceStr, ft.Denom)
 		if err == nil {
-			return Estimate{GasLimit: gas, Fee: fee}, nil
+			return Estimate{GasLimit: gas, Fee: fee, GasPriceAmount: gasPriceStr}, nil
 		}
 	}
 
@@ -73,13 +87,14 @@ func estimateFee(
 		logger.Warn("tx: using static fee defaults; consider configuring fee_tokens",
 			slog.String("chain_id", chain.ChainID))
 	}
-	baseGas := decimal.NewFromInt(int64(defaultBaseGas + defaultGasPerOutput*uint64(len(msgs))))
+	gasPriceStr := defaultGasPrice.String()
+	baseGas := decimal.NewFromInt(int64(defaultBaseGas + defaultGasPerOutput*uint64(outputCount)))
 	gas := baseGas.Mul(gasAdjustCold).Ceil().BigInt().Uint64()
-	fee, err := calcFee(gas, defaultGasPrice.String(), defaultFeeDenom)
+	fee, err := calcFee(gas, gasPriceStr, defaultFeeDenom)
 	if err != nil {
 		return Estimate{}, fmt.Errorf("tx: static fee fallback: %w", err)
 	}
-	return Estimate{GasLimit: gas, Fee: fee}, nil
+	return Estimate{GasLimit: gas, Fee: fee, GasPriceAmount: gasPriceStr}, nil
 }
 
 // trySimulate calls Service/Simulate with a minimal placeholder tx.
@@ -130,7 +145,7 @@ func trySimulate(
 	if err != nil {
 		return Estimate{}, false, err
 	}
-	return Estimate{GasLimit: gas, Fee: fee}, true, nil
+	return Estimate{GasLimit: gas, Fee: fee, GasPriceAmount: gasPriceStr}, true, nil
 }
 
 // calcFee computes ceil(gasLimit × gasPriceStr) and returns a Coin.

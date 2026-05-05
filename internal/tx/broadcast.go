@@ -74,7 +74,7 @@ func waitForConfirmation(ctx context.Context, txSvc txv1beta1.ServiceClient, txH
 		if txResp.Code != 0 {
 			return nil, classifyChainError(txResp)
 		}
-		return &BroadcastResult{TxHash: txResp.Txhash, Height: txResp.Height}, nil
+		return &BroadcastResult{TxHash: txResp.Txhash, Height: txResp.Height, GasUsed: uint64(txResp.GasUsed)}, nil
 	}
 }
 
