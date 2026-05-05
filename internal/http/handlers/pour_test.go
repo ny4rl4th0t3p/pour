@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
@@ -39,6 +40,10 @@ type mockDripStore struct{ id int64 }
 
 func (m *mockDripStore) RecordDrip(_ context.Context, _ store.DripRecord) (int64, error) {
 	return m.id, nil
+}
+
+func (*mockDripStore) UpdateDrip(_ context.Context, _ int64, _, _ string, _ int64) error {
+	return nil
 }
 
 // stubChainSource implements chain.ChainSource for handler tests.
@@ -202,6 +207,118 @@ func TestPour_realLimiter_rateLimited(t *testing.T) {
 	h.Pour(w2, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
 	if w2.Code != http.StatusTooManyRequests {
 		t.Fatalf("second request: got %d, want 429", w2.Code)
+	}
+}
+
+// mockPourer simulates the async batch pool: routing succeeds, then delivers result.
+type mockPourer struct {
+	err    error // if non-nil, Pour returns this immediately
+	result batch.Result
+}
+
+func (m *mockPourer) Pour(_ string, req batch.Request) error {
+	if m.err != nil {
+		return m.err
+	}
+	go func() { req.Result <- m.result }()
+	return nil
+}
+
+func newAsyncTestHandler(t *testing.T, pourer ChainPourer, ds DripStore) *Handler {
+	t.Helper()
+	return New(Deps{
+		Source:    testSource,
+		Pourer:    pourer,
+		Limiter:   &mockRateLimiter{},
+		DripStore: ds,
+		Version:   "test",
+	})
+}
+
+// ----- async pour tests -----
+
+func TestPour_async_queued(t *testing.T) {
+	ds := &mockDripStore{id: 7}
+	pourer := &mockPourer{result: batch.Result{TxHash: "ASYNC_TX"}}
+	h := newAsyncTestHandler(t, pourer, ds)
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status: got %d, want 202", w.Code)
+	}
+	var resp pourapi.PourResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Status != pourapi.StatusQueued {
+		t.Errorf("status: got %q, want %q", resp.Status, pourapi.StatusQueued)
+	}
+	if resp.DripID != 7 {
+		t.Errorf("drip_id: got %d, want 7", resp.DripID)
+	}
+	if resp.TxHash != "" {
+		t.Errorf("tx_hash: want empty for queued response, got %q", resp.TxHash)
+	}
+	if resp.Amount != "1000000uosmo" {
+		t.Errorf("amount: got %q, want 1000000uosmo", resp.Amount)
+	}
+}
+
+func TestPour_async_suspended(t *testing.T) {
+	pourer := &mockPourer{err: chain.ErrChainSuspended}
+	h := newAsyncTestHandler(t, pourer, &mockDripStore{})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: got %d, want 503", w.Code)
+	}
+}
+
+func TestPour_async_queueFull(t *testing.T) {
+	pourer := &mockPourer{err: batch.ErrAllFull}
+	h := newAsyncTestHandler(t, pourer, &mockDripStore{})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: got %d, want 503", w.Code)
+	}
+}
+
+func TestPour_async_syncFallback(t *testing.T) {
+	// When Pourer returns ErrSyncMode, handler falls through to broadcaster.
+	pourer := &mockPourer{err: chain.ErrSyncMode}
+	bc := &mockBroadcaster{result: &tx.BroadcastResult{TxHash: "SYNC_TX"}}
+	ds := &mockDripStore{id: 3}
+	h := New(Deps{
+		Source:       testSource,
+		Pourer:       pourer,
+		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
+		Limiter:      &mockRateLimiter{},
+		DripStore:    ds,
+		Version:      "test",
+	})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", w.Code)
+	}
+	var resp pourapi.PourResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Status != pourapi.StatusConfirmed {
+		t.Errorf("status: got %q, want %q", resp.Status, pourapi.StatusConfirmed)
+	}
+	if resp.TxHash != "SYNC_TX" {
+		t.Errorf("tx_hash: got %q, want SYNC_TX", resp.TxHash)
 	}
 }
 

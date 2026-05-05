@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/batch"
+	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
@@ -58,7 +61,93 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bc, ok := h.broadcasters[req.ChainID]
+	coins := tx.Coins{{Amount: coin.Amount, Denom: coin.Denom}}
+	amount := fmt.Sprintf("%s%s", coin.Amount, coin.Denom)
+	now := time.Now().Unix()
+
+	if h.pourer != nil {
+		if handled := h.tryPoolRoute(w, r, req.ChainID, req.Address, coins, amount, ip, now); handled {
+			return
+		}
+	}
+
+	h.pourSync(w, r, req.ChainID, req.Address, coins, amount, ip, now)
+}
+
+// tryPoolRoute routes the request to the batch pool. Returns true when the request
+// is fully handled (queued or error response sent), or false when ErrSyncMode is
+// returned and the caller should fall through to the sync path.
+func (h *Handler) tryPoolRoute(w http.ResponseWriter, r *http.Request, chainID, address string, coins tx.Coins, amount, ip string, now int64) bool {
+	ch := make(chan batch.Result, 1)
+	routeErr := h.pourer.Pour(chainID, batch.Request{
+		ToAddress: address,
+		Coins:     coins,
+		Result:    ch,
+	})
+
+	if routeErr == nil {
+		dripID, recordErr := h.dripStore.RecordDrip(r.Context(), store.DripRecord{
+			ChainID:     chainID,
+			Address:     address,
+			Coins:       amount,
+			RequesterIP: ip,
+			Status:      pourapi.StatusQueued,
+			RequestedAt: now,
+		})
+		if recordErr != nil {
+			slog.ErrorContext(r.Context(), "pour: record queued drip", "error", recordErr)
+		}
+		pourRequestsTotal.WithLabelValues(chainID, "queued").Inc()
+		writeJSON(w, http.StatusAccepted, pourapi.PourResponse{
+			DripID: dripID,
+			Status: pourapi.StatusQueued,
+			Amount: amount,
+		})
+		// context.WithoutCancel detaches from the request so the goroutine outlives the response
+		// while still carrying request-scoped values (e.g. trace IDs).
+		go h.awaitDrip(context.WithoutCancel(r.Context()), chainID, dripID, ch)
+		return true
+	}
+
+	if errors.Is(routeErr, chain.ErrSyncMode) {
+		return false
+	}
+	if errors.Is(routeErr, chain.ErrChainSuspended) {
+		pourRequestsTotal.WithLabelValues(chainID, "suspended").Inc()
+		writeError(w, http.StatusServiceUnavailable, "chain is suspended")
+		return true
+	}
+	pourRequestsTotal.WithLabelValues(chainID, "queue_full").Inc()
+	writeError(w, http.StatusServiceUnavailable, "faucet busy: try again shortly")
+	return true
+}
+
+// awaitDrip blocks until the batch result arrives (or ctx times out), then
+// updates the drip record and emits the outcome metric.
+func (h *Handler) awaitDrip(ctx context.Context, chainID string, dripID int64, ch <-chan batch.Result) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	var res batch.Result
+	select {
+	case res = <-ch:
+	case <-ctx.Done():
+		res = batch.Result{Err: ctx.Err()}
+	}
+
+	completedAt := time.Now().Unix()
+	if res.Err != nil {
+		pourRequestsTotal.WithLabelValues(chainID, "failed").Inc()
+		_ = h.dripStore.UpdateDrip(context.Background(), dripID, pourapi.StatusFailed, "", completedAt)
+		return
+	}
+	pourRequestsTotal.WithLabelValues(chainID, "confirmed").Inc()
+	_ = h.dripStore.UpdateDrip(context.Background(), dripID, pourapi.StatusConfirmed, res.TxHash, completedAt)
+}
+
+// pourSync handles the synchronous broadcast path (batch_window = "0" or Pourer not set).
+func (h *Handler) pourSync(w http.ResponseWriter, r *http.Request, chainID, address string, coins tx.Coins, amount, ip string, now int64) {
+	bc, ok := h.broadcasters[chainID]
 	if !ok {
 		writeError(w, http.StatusServiceUnavailable, "chain broadcaster not available")
 		return
@@ -66,37 +155,34 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 
 	result, err := bc.BuildAndBroadcast(r.Context(), tx.SendRequest{
 		KeyIndex:  0,
-		ToAddress: req.Address,
-		Coins:     tx.Coins{{Amount: coin.Amount, Denom: coin.Denom}},
+		ToAddress: address,
+		Coins:     coins,
 	})
 	if err != nil {
-		pourRequestsTotal.WithLabelValues(req.ChainID, "broadcast_error").Inc()
-		slog.ErrorContext(r.Context(), "pour: broadcast", "chain", req.ChainID, "error", err)
+		pourRequestsTotal.WithLabelValues(chainID, "broadcast_error").Inc()
+		slog.ErrorContext(r.Context(), "pour: broadcast", "chain", chainID, "error", err)
 		writeError(w, http.StatusInternalServerError, "broadcast failed")
 		return
 	}
 
-	amount := fmt.Sprintf("%s%s", coin.Amount, coin.Denom)
-	now := time.Now().Unix()
 	dripID, err := h.dripStore.RecordDrip(r.Context(), store.DripRecord{
-		ChainID:     req.ChainID,
-		Address:     req.Address,
+		ChainID:     chainID,
+		Address:     address,
 		Coins:       amount,
 		RequesterIP: ip,
 		TxHash:      result.TxHash,
-		Status:      "confirmed",
+		Status:      pourapi.StatusConfirmed,
 		RequestedAt: now,
 		CompletedAt: now,
 	})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "pour: record drip", "tx_hash", result.TxHash, "error", err)
-		// tokens were already sent; return success with drip_id 0
 	}
 
-	pourRequestsTotal.WithLabelValues(req.ChainID, "confirmed").Inc()
+	pourRequestsTotal.WithLabelValues(chainID, "confirmed").Inc()
 	writeJSON(w, http.StatusOK, pourapi.PourResponse{
 		DripID: dripID,
-		Status: "confirmed",
+		Status: pourapi.StatusConfirmed,
 		Amount: amount,
 		TxHash: result.TxHash,
 	})
