@@ -357,6 +357,82 @@ func (*countingBroadcaster) QueryBalance(_ context.Context, _, _ string) (tx.Coi
 
 func (*countingBroadcaster) Close() error { return nil }
 
+// ----- DistributorStates / ChainStatus tests -----
+
+func TestDistributorStates_querySuccess(t *testing.T) {
+	stub := &stubBroadcaster{
+		balanceResult: tx.Coin{Denom: "uatom", Amount: "5000000"},
+	}
+	threshold := tx.Coin{Denom: "uatom", Amount: "1000000"}
+	c := newRefillChain(stub, threshold, []string{"cosmos1dist1", "cosmos1dist2"})
+
+	states := c.DistributorStates(context.Background())
+	if len(states) != 2 {
+		t.Fatalf("len(states) = %d, want 2", len(states))
+	}
+	if states[0].KeyIndex != 1 {
+		t.Errorf("states[0].KeyIndex = %d, want 1", states[0].KeyIndex)
+	}
+	if states[0].Address != "cosmos1dist1" {
+		t.Errorf("states[0].Address = %q, want cosmos1dist1", states[0].Address)
+	}
+	if states[0].Balance != "5000000" {
+		t.Errorf("states[0].Balance = %q, want 5000000", states[0].Balance)
+	}
+	if states[0].Status != batch.StatusHealthy {
+		t.Errorf("states[0].Status = %v, want StatusHealthy", states[0].Status)
+	}
+	if states[1].KeyIndex != 2 {
+		t.Errorf("states[1].KeyIndex = %d, want 2", states[1].KeyIndex)
+	}
+}
+
+func TestDistributorStates_queryError(t *testing.T) {
+	stub := &stubBroadcaster{
+		balanceErr: errors.New("node unavailable"),
+	}
+	threshold := tx.Coin{Denom: "uatom", Amount: "1000000"}
+	c := newRefillChain(stub, threshold, []string{"cosmos1dist1"})
+
+	states := c.DistributorStates(context.Background())
+	if len(states) != 1 {
+		t.Fatalf("len(states) = %d, want 1", len(states))
+	}
+	if states[0].Balance != "" {
+		t.Errorf("balance should be empty on query error, got %q", states[0].Balance)
+	}
+}
+
+func TestChainStatus_initial(t *testing.T) {
+	c := newTestChain(&stubBroadcaster{})
+	snap := c.ChainStatus()
+	if snap.Suspended {
+		t.Error("expected not suspended initially")
+	}
+	if snap.MultiSendDisabled {
+		t.Error("expected multisend not disabled initially")
+	}
+	if snap.SendFailStreak != 0 {
+		t.Errorf("SendFailStreak = %d, want 0", snap.SendFailStreak)
+	}
+	if snap.MultiSendFailStreak != 0 {
+		t.Errorf("MultiSendFailStreak = %d, want 0", snap.MultiSendFailStreak)
+	}
+}
+
+func TestChainStatus_suspended(t *testing.T) {
+	c := newTestChain(&stubBroadcaster{})
+	c.Suspend(errors.New("test failure"))
+
+	snap := c.ChainStatus()
+	if !snap.Suspended {
+		t.Error("expected suspended")
+	}
+	if snap.SuspendReason != "test failure" {
+		t.Errorf("SuspendReason = %q, want 'test failure'", snap.SuspendReason)
+	}
+}
+
 // ----- refill tests -----
 
 func newRefillChain(stub *stubBroadcaster, threshold tx.Coin, distributorAddrs []string) *Chain {

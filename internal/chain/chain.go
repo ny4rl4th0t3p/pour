@@ -149,6 +149,24 @@ func resolveRefillThreshold(threshold, dripAnonymous string, distributors int) (
 	return tx.Coin{Denom: coin.Denom, Amount: amount.String()}, nil
 }
 
+// DistributorState holds the observable state of one distributor account.
+type DistributorState struct {
+	KeyIndex   uint32
+	Address    string
+	Balance    string // coin amount; empty if balance query failed
+	QueueDepth int
+	Status     batch.Status
+}
+
+// ChainStatusSnapshot is a point-in-time view of chain operational flags.
+type ChainStatusSnapshot struct {
+	Suspended           bool
+	SuspendReason       string
+	MultiSendDisabled   bool
+	SendFailStreak      int32
+	MultiSendFailStreak int32
+}
+
 // Info returns the chain's resolved configuration.
 func (c *Chain) Info() *chainregistry.ChainInfo { return c.info }
 
@@ -205,6 +223,51 @@ func (c *Chain) Resume() {
 	c.sendFailStreak.Store(0)
 	c.multiSendFailStreak.Store(0)
 	c.log.Info("chain: resumed", "chain_id", c.info.ChainID)
+}
+
+// DistributorStates returns a best-effort snapshot of all distributor accounts.
+// Balance is queried live from the node; an empty string means the query failed.
+func (c *Chain) DistributorStates(ctx context.Context) []DistributorState {
+	var poolDists []*batch.Distributor
+	if c.pool != nil {
+		poolDists = c.pool.All()
+	}
+	states := make([]DistributorState, len(c.distributorAddrs))
+	for i, addr := range c.distributorAddrs {
+		bal, err := c.client.QueryBalance(ctx, addr, c.refillThreshold.Denom)
+		balStr := ""
+		if err == nil {
+			balStr = bal.Amount
+		}
+		depth := 0
+		status := batch.StatusHealthy
+		if i < len(poolDists) {
+			depth = poolDists[i].Window.Depth()
+			status = poolDists[i].Status()
+		}
+		states[i] = DistributorState{
+			KeyIndex:   uint32(i + 1),
+			Address:    addr,
+			Balance:    balStr,
+			QueueDepth: depth,
+			Status:     status,
+		}
+	}
+	return states
+}
+
+// ChainStatus returns a point-in-time view of chain operational flags.
+func (c *Chain) ChainStatus() ChainStatusSnapshot {
+	snap := ChainStatusSnapshot{
+		Suspended:           c.suspended.Load(),
+		MultiSendDisabled:   c.multiSendDisabled.Load(),
+		SendFailStreak:      c.sendFailStreak.Load(),
+		MultiSendFailStreak: c.multiSendFailStreak.Load(),
+	}
+	if r := c.suspendReason.Load(); r != nil {
+		snap.SuspendReason = *r
+	}
+	return snap
 }
 
 // makeFlushFn returns the batch flush callback for this chain.
