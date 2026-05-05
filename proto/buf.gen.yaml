@@ -7,6 +7,7 @@ plugins:
       - Mcosmos/base/v1beta1/coin.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/base/v1beta1
       - Mcosmos/bank/v1beta1/bank.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1
       - Mcosmos/bank/v1beta1/tx.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1
+      - Mcosmos/bank/v1beta1/query.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1
       - Mcosmos/tx/v1beta1/tx.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1
       - Mcosmos/tx/v1beta1/service.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1
       - Mcosmos/tx/signing/v1beta1/signing.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/signing/v1beta1
@@ -31,6 +32,7 @@ plugins:
       - Mcosmos/base/v1beta1/coin.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/base/v1beta1
       - Mcosmos/bank/v1beta1/bank.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1
       - Mcosmos/bank/v1beta1/tx.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1
+      - Mcosmos/bank/v1beta1/query.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1
       - Mcosmos/tx/v1beta1/tx.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1
       - Mcosmos/tx/v1beta1/service.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1
       - Mcosmos/tx/signing/v1beta1/signing.proto=github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/signing/v1beta1
