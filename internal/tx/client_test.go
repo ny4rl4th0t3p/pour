@@ -9,6 +9,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/ny4rl4th0t3p/pour/internal/tx/internal/keys"
 	authv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/auth/v1beta1"
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/internal/tx/testdata/fakechain"
@@ -17,12 +18,20 @@ import (
 
 func newTestClient(t *testing.T, conn *grpc.ClientConn, chain *chainregistry.ChainInfo) *Client {
 	t.Helper()
+	privKey, err := keys.DerivePrivKey(testMnemonic, chain.Slip44, 0)
+	if err != nil {
+		t.Fatalf("derive key: %v", err)
+	}
 	return &Client{
-		chain:   chain,
-		conn:    conn,
-		txSvc:   txv1beta1.NewServiceClient(conn),
-		authSvc: authv1beta1.NewQueryClient(conn),
-		opts:    Options{},
+		chain: chain,
+		bundle: connBundle{
+			url:     "test",
+			conn:    conn,
+			txSvc:   txv1beta1.NewServiceClient(conn),
+			authSvc: authv1beta1.NewQueryClient(conn),
+		},
+		cachedKeys: map[uint32]*keys.PrivKey{0: privKey},
+		opts:       Options{},
 	}
 }
 
@@ -49,7 +58,6 @@ func TestBuildAndBroadcast_happyPath(t *testing.T) {
 	}
 
 	result, err := newTestClient(t, conn, chain).BuildAndBroadcast(t.Context(), SendRequest{
-		Mnemonic:  testMnemonic,
 		KeyIndex:  0,
 		ToAddress: testToAddr,
 		Coins:     Coins{{Denom: "uosmo", Amount: "1000000"}},
@@ -89,7 +97,6 @@ func TestBuildAndBroadcastMulti_happyPath(t *testing.T) {
 	}
 
 	result, err := newTestClient(t, conn, chain).BuildAndBroadcastMulti(t.Context(), BatchSendRequest{
-		Mnemonic: testMnemonic,
 		KeyIndex: 0,
 		Outputs: []SendOutput{
 			{ToAddress: testToAddr, Coins: Coins{{Denom: "uosmo", Amount: "500000"}}},
@@ -119,7 +126,6 @@ func TestBuildAndBroadcastMulti_emptyOutputs(t *testing.T) {
 	}
 
 	_, err := newTestClient(t, conn, chain).BuildAndBroadcastMulti(t.Context(), BatchSendRequest{
-		Mnemonic: testMnemonic,
 		KeyIndex: 0,
 		Outputs:  nil,
 	})
@@ -141,7 +147,6 @@ func TestBuildAndBroadcast_accountNotFound(t *testing.T) {
 	}
 
 	_, err := newTestClient(t, conn, chain).BuildAndBroadcast(t.Context(), SendRequest{
-		Mnemonic:  testMnemonic,
 		KeyIndex:  0,
 		ToAddress: testToAddr,
 		Coins:     Coins{{Denom: "uosmo", Amount: "1000000"}},

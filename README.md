@@ -92,17 +92,17 @@ chains:
 
 ## Environment variables
 
-| Variable           | Default              | Description                                              |
-|--------------------|----------------------|----------------------------------------------------------|
-| `POUR_MNEMONIC`    | —                    | **Required.** BIP39 mnemonic for the faucet wallet.      |
-| `POUR_ADMIN_TOKEN` | *(auto-generated)*   | Admin API bearer token. Auto-written to `.pour-admin-token` on first start. |
-| `POUR_CONFIG`      | `chains.yml`         | Path to the chains config file.                          |
-| `POUR_LISTEN`      | `:8080`              | Address to listen on.                                    |
-| `POUR_DB_PATH`     | `pour.db`            | Path to the SQLite database.                             |
-| `POUR_LOG_LEVEL`   | `info`               | Log level: `debug`, `info`, `warn`, `error`.             |
-| `POUR_METRICS`     | `false`              | Enable Prometheus metrics at `/metrics`.                 |
-| `POUR_NO_UI`       | `false`              | Disable the embedded web UI.                             |
-| `POUR_ADMIN_URL`   | `http://localhost:8080` | Base URL used by `pour chains` CLI subcommands.       |
+| Variable           | Default                 | Description                                                                 |
+|--------------------|-------------------------|-----------------------------------------------------------------------------|
+| `POUR_MNEMONIC`    | —                       | **Required.** BIP39 mnemonic for the faucet wallet.                         |
+| `POUR_ADMIN_TOKEN` | *(auto-generated)*      | Admin API bearer token. Auto-written to `.pour-admin-token` on first start. |
+| `POUR_CONFIG`      | `chains.yml`            | Path to the chains config file.                                             |
+| `POUR_LISTEN`      | `:8080`                 | Address to listen on.                                                       |
+| `POUR_DB_PATH`     | `pour.db`               | Path to the SQLite database.                                                |
+| `POUR_LOG_LEVEL`   | `info`                  | Log level: `debug`, `info`, `warn`, `error`.                                |
+| `POUR_METRICS`     | `false`                 | Enable Prometheus metrics at `/metrics`.                                    |
+| `POUR_NO_UI`       | `false`                 | Disable the embedded web UI.                                                |
+| `POUR_ADMIN_URL`   | `http://localhost:8080` | Base URL used by `pour chains` CLI subcommands.                             |
 
 ## HTTP API
 

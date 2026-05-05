@@ -40,7 +40,6 @@ type GasCache interface {
 
 // SendRequest is the input to Client.BuildAndBroadcast.
 type SendRequest struct {
-	Mnemonic  string
 	KeyIndex  uint32
 	ToAddress string
 	Coins     Coins
@@ -54,7 +53,6 @@ type SendOutput struct {
 
 // BatchSendRequest is the input to Client.BuildAndBroadcastMulti.
 type BatchSendRequest struct {
-	Mnemonic string
 	KeyIndex uint32
 	Outputs  []SendOutput
 }

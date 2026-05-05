@@ -28,7 +28,6 @@ type Deps struct {
 	Limiter         handlers.RateLimiter
 	Broadcasters    map[string]handlers.Broadcaster
 	AdminHandler    nethttp.Handler // optional; mounted at /admin when non-nil
-	Mnemonic        string
 	Version         string
 }
 
@@ -51,7 +50,6 @@ func New(deps Deps) (*Server, error) {
 		Broadcasters:        deps.Broadcasters,
 		Limiter:             deps.Limiter,
 		DripStore:           deps.Store,
-		Mnemonic:            deps.Mnemonic,
 		Version:             deps.Version,
 	})
 
