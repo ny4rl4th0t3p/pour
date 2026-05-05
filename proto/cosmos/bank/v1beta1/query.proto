@@ -17,7 +17,7 @@ service Query {
   // Balance queries the balance of a single coin for a single account.
   rpc Balance(QueryBalanceRequest) returns (QueryBalanceResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/balances/{address}/by_denom";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/balances/{address}/by_denom";
   }
 
   // AllBalances queries the balance of all coins for a single account.
@@ -26,7 +26,7 @@ service Query {
   // gas if the pagination field is incorrectly set.
   rpc AllBalances(QueryAllBalancesRequest) returns (QueryAllBalancesResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/balances/{address}";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/balances/{address}";
   }
 
   // SpendableBalances queries the spendable balance of all coins for a single
@@ -35,9 +35,9 @@ service Query {
   // When called from another module, this query might consume a high amount of
   // gas if the pagination field is incorrectly set.
   rpc SpendableBalances(QuerySpendableBalancesRequest) returns (QuerySpendableBalancesResponse) {
-    option (cosmos_proto.method_added_in)      = "cosmos-sdk 0.46";
+    option (cosmos_proto.method_added_in) = "cosmos-sdk 0.46";
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/spendable_balances/{address}";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/spendable_balances/{address}";
   }
 
   // SpendableBalanceByDenom queries the spendable balance of a single denom for
@@ -46,9 +46,9 @@ service Query {
   // When called from another module, this query might consume a high amount of
   // gas if the pagination field is incorrectly set.
   rpc SpendableBalanceByDenom(QuerySpendableBalanceByDenomRequest) returns (QuerySpendableBalanceByDenomResponse) {
-    option (cosmos_proto.method_added_in)      = "cosmos-sdk 0.47";
+    option (cosmos_proto.method_added_in) = "cosmos-sdk 0.47";
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/spendable_balances/{address}/by_denom";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/spendable_balances/{address}/by_denom";
   }
 
   // TotalSupply queries the total supply of all coins.
@@ -57,7 +57,7 @@ service Query {
   // gas if the pagination field is incorrectly set.
   rpc TotalSupply(QueryTotalSupplyRequest) returns (QueryTotalSupplyResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/supply";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/supply";
   }
 
   // SupplyOf queries the supply of a single coin.
@@ -66,33 +66,33 @@ service Query {
   // gas if the pagination field is incorrectly set.
   rpc SupplyOf(QuerySupplyOfRequest) returns (QuerySupplyOfResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/supply/by_denom";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/supply/by_denom";
   }
 
   // Params queries the parameters of x/bank module.
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/params";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/params";
   }
 
   // DenomsMetadata queries the client metadata for all registered coin
   // denominations.
   rpc DenomsMetadata(QueryDenomsMetadataRequest) returns (QueryDenomsMetadataResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_metadata";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denoms_metadata";
   }
 
   // DenomMetadata queries the client metadata of a given coin denomination.
   rpc DenomMetadata(QueryDenomMetadataRequest) returns (QueryDenomMetadataResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_metadata/{denom=**}";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denoms_metadata/{denom=**}";
   }
 
   // DenomMetadataByQueryString queries the client metadata of a given coin denomination.
   rpc DenomMetadataByQueryString(QueryDenomMetadataByQueryStringRequest)
       returns (QueryDenomMetadataByQueryStringResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_metadata_by_query_string";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denoms_metadata_by_query_string";
   }
 
   // DenomOwners queries for all account addresses that own a particular token
@@ -101,17 +101,17 @@ service Query {
   // When called from another module, this query might consume a high amount of
   // gas if the pagination field is incorrectly set.
   rpc DenomOwners(QueryDenomOwnersRequest) returns (QueryDenomOwnersResponse) {
-    option (cosmos_proto.method_added_in)      = "cosmos-sdk 0.46";
+    option (cosmos_proto.method_added_in) = "cosmos-sdk 0.46";
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/denom_owners/{denom=**}";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denom_owners/{denom=**}";
   }
 
   // DenomOwnersByQuery queries for all account addresses that own a particular token
   // denomination.
   rpc DenomOwnersByQuery(QueryDenomOwnersByQueryRequest) returns (QueryDenomOwnersByQueryResponse) {
-    option (cosmos_proto.method_added_in)      = "cosmos-sdk 0.50.3";
+    option (cosmos_proto.method_added_in) = "cosmos-sdk 0.50.3";
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/denom_owners_by_query";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denom_owners_by_query";
   }
 
   // SendEnabled queries for SendEnabled entries.
@@ -120,15 +120,15 @@ service Query {
   // Any denomination that does not have a specific setting will use the default
   // params.default_send_enabled, and will not be returned by this query.
   rpc SendEnabled(QuerySendEnabledRequest) returns (QuerySendEnabledResponse) {
-    option (cosmos_proto.method_added_in)      = "cosmos-sdk 0.47";
+    option (cosmos_proto.method_added_in) = "cosmos-sdk 0.47";
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/bank/v1beta1/send_enabled";
+    option (google.api.http).get = "/cosmos/bank/v1beta1/send_enabled";
   }
 }
 
 // QueryBalanceRequest is the request type for the Query/Balance RPC method.
 message QueryBalanceRequest {
-  option (gogoproto.equal)           = false;
+  option (gogoproto.equal) = false;
   option (gogoproto.goproto_getters) = false;
 
   // address is the address to query balances for.
@@ -146,7 +146,7 @@ message QueryBalanceResponse {
 
 // QueryBalanceRequest is the request type for the Query/AllBalances RPC method.
 message QueryAllBalancesRequest {
-  option (gogoproto.equal)           = false;
+  option (gogoproto.equal) = false;
   option (gogoproto.goproto_getters) = false;
 
   // address is the address to query balances for.
@@ -164,9 +164,9 @@ message QueryAllBalancesRequest {
 message QueryAllBalancesResponse {
   // balances is the balances of all the coins.
   repeated cosmos.base.v1beta1.Coin balances = 1 [
-    (gogoproto.nullable)     = false,
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coins",
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coins",
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
   ];
 
@@ -178,8 +178,8 @@ message QueryAllBalancesResponse {
 // an account's spendable balances.
 message QuerySpendableBalancesRequest {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.46";
-  option (gogoproto.equal)               = false;
-  option (gogoproto.goproto_getters)     = false;
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
 
   // address is the address to query spendable balances for.
   string address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
@@ -194,9 +194,9 @@ message QuerySpendableBalancesResponse {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.46";
   // balances is the spendable balances of all the coins.
   repeated cosmos.base.v1beta1.Coin balances = 1 [
-    (gogoproto.nullable)     = false,
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coins",
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coins",
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
   ];
 
@@ -208,8 +208,8 @@ message QuerySpendableBalancesResponse {
 // querying an account's spendable balance for a specific denom.
 message QuerySpendableBalanceByDenomRequest {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.47";
-  option (gogoproto.equal)               = false;
-  option (gogoproto.goproto_getters)     = false;
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
 
   // address is the address to query balances for.
   string address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
@@ -229,7 +229,7 @@ message QuerySpendableBalanceByDenomResponse {
 // QueryTotalSupplyRequest is the request type for the Query/TotalSupply RPC
 // method.
 message QueryTotalSupplyRequest {
-  option (gogoproto.equal)           = false;
+  option (gogoproto.equal) = false;
   option (gogoproto.goproto_getters) = false;
 
   // pagination defines an optional pagination for the request.
@@ -241,9 +241,9 @@ message QueryTotalSupplyRequest {
 message QueryTotalSupplyResponse {
   // supply is the supply of the coins
   repeated cosmos.base.v1beta1.Coin supply = 1 [
-    (gogoproto.nullable)     = false,
-    (amino.dont_omitempty)   = true,
-    (amino.encoding)         = "legacy_coins",
+    (gogoproto.nullable) = false,
+    (amino.dont_omitempty) = true,
+    (amino.encoding) = "legacy_coins",
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
   ];
 
@@ -341,7 +341,7 @@ message DenomOwner {
 // QueryDenomOwnersResponse defines the RPC response of a DenomOwners RPC query.
 message QueryDenomOwnersResponse {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.46";
-  repeated DenomOwner denom_owners       = 1;
+  repeated DenomOwner denom_owners = 1;
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
@@ -362,7 +362,7 @@ message QueryDenomOwnersByQueryRequest {
 // QueryDenomOwnersByQueryResponse defines the RPC response of a DenomOwnersByQuery RPC query.
 message QueryDenomOwnersByQueryResponse {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.50.3";
-  repeated DenomOwner denom_owners       = 1;
+  repeated DenomOwner denom_owners = 1;
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
@@ -381,7 +381,7 @@ message QuerySendEnabledRequest {
 // QuerySendEnabledResponse defines the RPC response of a SendEnable query.
 message QuerySendEnabledResponse {
   option (cosmos_proto.message_added_in) = "cosmos-sdk 0.47";
-  repeated SendEnabled send_enabled      = 1;
+  repeated SendEnabled send_enabled = 1;
   // pagination defines the pagination in the response. This field is only
   // populated if the denoms field in the request is empty.
   cosmos.base.query.v1beta1.PageResponse pagination = 99;

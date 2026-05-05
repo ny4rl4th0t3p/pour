@@ -10,6 +10,7 @@ import (
 
 	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
+	"github.com/ny4rl4th0t3p/pour/internal/observability"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
@@ -193,7 +194,13 @@ func (c *Chain) Pour(_ context.Context, req batch.Request) error {
 	if c.pool == nil {
 		return ErrSyncMode
 	}
-	return c.pool.Route(req)
+	if err := c.pool.Route(req); err != nil {
+		return err
+	}
+	for _, d := range c.pool.All() {
+		observability.QueueDepth.WithLabelValues(c.info.ChainID, fmt.Sprintf("%d", d.KeyIndex)).Set(float64(d.Window.Depth()))
+	}
+	return nil
 }
 
 // Start launches the pool goroutines (if batching is enabled), the endpoint probe loop,
@@ -213,6 +220,7 @@ func (c *Chain) Suspend(err error) {
 	reason := err.Error()
 	c.suspendReason.Store(&reason)
 	c.suspended.Store(true)
+	observability.ChainSuspended.WithLabelValues(c.info.ChainID).Set(1)
 	c.log.Error("chain: suspended — resume with 'pour admin resume CHAIN_ID'",
 		"chain_id", c.info.ChainID, "err", err)
 }
@@ -222,6 +230,7 @@ func (c *Chain) Resume() {
 	c.suspended.Store(false)
 	c.sendFailStreak.Store(0)
 	c.multiSendFailStreak.Store(0)
+	observability.ChainSuspended.WithLabelValues(c.info.ChainID).Set(0)
 	c.log.Info("chain: resumed", "chain_id", c.info.ChainID)
 }
 
@@ -277,9 +286,12 @@ func (c *Chain) makeFlushFn() func(uint32, []batch.Request) {
 		defer cancel()
 
 		if c.suspended.Load() {
+			observability.DripsTotal.WithLabelValues(c.info.ChainID, "failed").Add(float64(len(reqs)))
 			sendErrAll(reqs, ErrChainSuspended)
 			return
 		}
+
+		observability.BatchSizeRecipients.WithLabelValues(c.info.ChainID).Observe(float64(len(reqs)))
 
 		outputs := make([]tx.SendOutput, len(reqs))
 		for i, r := range reqs {
@@ -303,6 +315,7 @@ func (c *Chain) makeFlushFn() func(uint32, []batch.Request) {
 			if err == nil {
 				c.sendFailStreak.Store(0)
 				c.multiSendFailStreak.Store(0)
+				observability.DripsTotal.WithLabelValues(c.info.ChainID, "confirmed").Add(float64(len(reqs)))
 				for _, r := range reqs {
 					r.Result <- batch.Result{TxHash: result.TxHash}
 				}
@@ -324,10 +337,13 @@ func (c *Chain) makeFlushFn() func(uint32, []batch.Request) {
 				}
 				if c.pool != nil {
 					c.pool.MarkRecovering(keyIndex)
+					observability.DistributorRecoveryTotal.WithLabelValues(c.info.ChainID).Inc()
 				}
+				observability.DripsTotal.WithLabelValues(c.info.ChainID, "failed").Add(float64(len(reqs[i:])))
 				sendErrAll(reqs[i:], err)
 				return
 			}
+			observability.DripsTotal.WithLabelValues(c.info.ChainID, "confirmed").Inc()
 			r.Result <- batch.Result{TxHash: result.TxHash}
 		}
 		// Split succeeded: if multi was attempted and failed, increment its streak.
@@ -336,6 +352,7 @@ func (c *Chain) makeFlushFn() func(uint32, []batch.Request) {
 				if !c.multiSendDisabled.Swap(true) {
 					c.log.Warn("chain: MsgMultiSend disabled after repeated failures",
 						"chain_id", c.info.ChainID)
+					observability.MultisendDisabledTotal.WithLabelValues(c.info.ChainID).Inc()
 				}
 			}
 		}
