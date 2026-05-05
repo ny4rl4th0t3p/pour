@@ -69,7 +69,6 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		KeyIndex:  0,
 		ToAddress: req.Address,
 		Coins:     tx.Coins{{Amount: coin.Amount, Denom: coin.Denom}},
-		GasCache:  h.gasCache,
 	})
 	if err != nil {
 		pourRequestsTotal.WithLabelValues(req.ChainID, "broadcast_error").Inc()

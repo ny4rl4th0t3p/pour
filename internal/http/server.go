@@ -16,7 +16,6 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/http/handlers"
 	ourmw "github.com/ny4rl4th0t3p/pour/internal/http/middleware"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
-	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/internal/ui"
 )
 
@@ -27,9 +26,8 @@ type Deps struct {
 	Serve           *config.ServeConfig
 	Store           *store.Store
 	Limiter         handlers.RateLimiter
-	Broadcasters    map[string]handlers.Broadcaster // chain_id → tx.Client
-	GasCache        tx.GasCache                     // optional; may be nil
-	AdminHandler    nethttp.Handler                 // optional; mounted at /admin when non-nil
+	Broadcasters    map[string]handlers.Broadcaster
+	AdminHandler    nethttp.Handler // optional; mounted at /admin when non-nil
 	Mnemonic        string
 	Version         string
 }
@@ -53,7 +51,6 @@ func New(deps Deps) (*Server, error) {
 		Broadcasters:        deps.Broadcasters,
 		Limiter:             deps.Limiter,
 		DripStore:           deps.Store,
-		GasCache:            deps.GasCache,
 		Mnemonic:            deps.Mnemonic,
 		Version:             deps.Version,
 	})

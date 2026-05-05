@@ -34,7 +34,6 @@ type Deps struct {
 	Broadcasters        map[string]Broadcaster
 	Limiter             RateLimiter
 	DripStore           DripStore
-	GasCache            tx.GasCache // optional; may be nil
 	Mnemonic            string
 	Version             string
 }
@@ -46,7 +45,6 @@ type Handler struct {
 	broadcasters        map[string]Broadcaster
 	limiter             RateLimiter
 	dripStore           DripStore
-	gasCache            tx.GasCache
 	mnemonic            string
 	version             string
 }
@@ -59,7 +57,6 @@ func New(deps Deps) *Handler {
 		broadcasters:        deps.Broadcasters,
 		limiter:             deps.Limiter,
 		dripStore:           deps.DripStore,
-		gasCache:            deps.GasCache,
 		mnemonic:            deps.Mnemonic,
 		version:             deps.Version,
 	}
