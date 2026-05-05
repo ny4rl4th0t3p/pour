@@ -91,4 +91,30 @@ if [ "$POST_BAL" -ne "$EXPECTED_POST" ]; then
   exit 1
 fi
 
+echo "==> /v1/info"
+curl -sf "$BASE/v1/info" | grep -q '"version"'
+
+echo "==> /v1/chains"
+CHAINS=$(curl -sf "$BASE/v1/chains")
+echo "    $CHAINS"
+echo "$CHAINS" | grep -q '"chain_id":"test-1"'
+
+echo "==> rate limit (second pour from same IP; limit=1 in smoke chains.yml)"
+RESP2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/v1/pour" \
+  -H 'Content-Type: application/json' \
+  -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}")
+if [ "$RESP2" != "429" ]; then
+  echo "FAIL: expected 429 on second pour from same IP, got $RESP2"
+  exit 1
+fi
+
+echo "==> unknown chain returns 4xx"
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/v1/pour" \
+  -H 'Content-Type: application/json' \
+  -d '{"chain_id":"doesnotexist-99","address":"cosmos1abc"}')
+if [ "$STATUS" = "200" ]; then
+  echo "FAIL: expected 4xx for unknown chain, got $STATUS"
+  exit 1
+fi
+
 echo "==> passed"

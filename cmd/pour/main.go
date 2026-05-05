@@ -96,6 +96,7 @@ func (c *ServeCmd) Run() error {
 	mgr, err := chain.New(ctx, chain.Options{
 		Config:          chains,
 		GasCache:        gc,
+		MnemonicFn:      func() string { return os.Getenv("POUR_MNEMONIC") },
 		RegistryBaseURL: chains.Registry.BaseURL,
 		RefreshInterval: refreshInterval,
 	})
@@ -103,6 +104,7 @@ func (c *ServeCmd) Run() error {
 		return err
 	}
 	defer mgr.Close()
+	mgr.Start(ctx)
 	mgr.StartRefreshLoop(ctx)
 
 	rawClients := mgr.Clients()
@@ -130,7 +132,6 @@ func (c *ServeCmd) Run() error {
 		Limiter:         limiter,
 		Broadcasters:    broadcasters,
 		AdminHandler:    adminRouter,
-		Mnemonic:        mnemonic,
 		Version:         version,
 	})
 	if err != nil {
