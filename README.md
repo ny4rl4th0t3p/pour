@@ -1,7 +1,5 @@
 # pour
 
-> **This README documents v0.2.0. It will not be accurate for earlier or later versions.**
-
 > **This project is under active development.** The API, config schema, and CLI flags are not stable until v1.0.0.
 > Pre-1.0 minor releases may add new config keys but aim not to remove or rename existing ones. v1.0.0 is planned to
 > follow v0.7.0 once the feature set is complete and the interfaces have been battle-tested — hopefully without too long
@@ -51,6 +49,22 @@ your own.
 
 ```yaml
 abuse:
+  # Proof-of-work gate (Altcha). Enabled by default.
+  pow:
+    enabled: true
+    difficulty: medium   # easy | medium | hard | <positive integer>
+
+  # API key authentication. Enabled by default.
+  api_keys:
+    enabled: true
+
+  # Signed-challenge authentication (Cosmos wallet signature). Disabled by default.
+  signature_challenge:
+    enabled: false
+    require_predicate: none       # none | has_balance
+    # predicate_chain_id: ""      # chain to query for the predicate; defaults to the chain being dripped
+    # predicate_min_amount: ""    # required when require_predicate is has_balance (e.g. "1000000uatom")
+
   ip_rate_limit:
     requests_per_window: 10
     window: 1h
@@ -72,6 +86,15 @@ chains:
     enabled: true
     drip:
       anonymous: "1000000uosmo"
+      max_per_address_per_day: "50000000uosmo"
+
+    # Concurrency — optional; defaults shown.
+    distributors: 1               # signing accounts (key indices 1..N); holder is index 0
+    batch_window: "5s"            # coalesce requests into MsgMultiSend; "0" = synchronous
+    max_recipients_per_batch: 25  # outputs per MsgMultiSend
+    # max_queue_depth: 500          # per-distributor queue cap; 0 = unlimited (not recommended)
+    # refill_threshold: ""          # min distributor balance before holder refills it
+    #                               # default: drip.anonymous × distributors × 10
 
   # Standalone chain: not in the public registry — all fields must be provided.
   - chain_id: mynet-1
@@ -88,6 +111,7 @@ chains:
         average_gas_price: "0.025"
     drip:
       anonymous: "1000000umynet"
+      max_per_address_per_day: "10000000umynet"
 ```
 
 ## Environment variables
@@ -107,18 +131,27 @@ chains:
 ## HTTP API
 
 ```
-POST /v1/pour                  drip tokens to an address
-GET  /v1/chains                list enabled chains and drip config
-GET  /v1/chains/{chain_id}     detail for a single chain
-GET  /v1/info                  version and feature flags
-GET  /health                   liveness probe — {"status":"ok"}
-GET  /metrics                  Prometheus metrics (if POUR_METRICS=true)
+POST /v1/pour                              drip tokens to an address
+GET  /v1/chains                            list enabled chains and drip config
+GET  /v1/chains/{chain_id}                 detail for a single chain
+GET  /v1/info                              version and feature flags
+GET  /health                               liveness probe — {"status":"ok"}
+GET  /metrics                              Prometheus metrics (if POUR_METRICS=true)
 
-GET  /admin/registry/snapshot  full resolved registry view (admin auth required)
-GET  /admin/registry/pending   pending registry changes awaiting acceptance
-POST /admin/registry/accept    accept a pending change for a specific field
-POST /admin/registry/refresh   trigger an immediate registry re-fetch
-POST /admin/reload             hot-reload chains.yml without restart
+GET  /admin/registry/snapshot              full resolved registry view (admin auth required)
+GET  /admin/registry/pending               pending registry changes awaiting acceptance
+POST /admin/registry/accept                accept a pending change for a specific field
+POST /admin/registry/refresh               trigger an immediate registry re-fetch
+POST /admin/reload                         hot-reload chains.yml without restart
+
+GET  /admin/distributors/{chain}           distributor balances, queue depths, and status
+POST /admin/distributors/{chain}/refill    trigger immediate refill from holder
+
+GET  /admin/chains/{chain}/gas-cache       current learned gas parameters
+POST /admin/chains/{chain}/gas-cache/reset clear learned gas; forces cold-start estimation
+
+GET  /admin/chains/{chain}/status          chain operational state (suspended, multisend_disabled, …)
+POST /admin/chains/{chain}/resume          clear suspension; chain resumes accepting pours
 ```
 
 **Drip request:**
@@ -129,7 +162,21 @@ curl -X POST http://localhost:8080/v1/pour \
   -d '{"chain_id":"osmosis-1","address":"osmo1..."}'
 ```
 
-**Response:**
+**Response when `batch_window > 0` (default):** the request is queued and the response is immediate.
+
+```json
+{
+  "drip_id": 42,
+  "status": "queued",
+  "amount": "1000000uosmo"
+}
+```
+
+The drip record transitions `queued → submitted → confirmed` (or `failed`) as the batch is
+broadcast and confirmed. Set `batch_window: "0"` to use synchronous mode and wait for
+confirmation before the response is returned.
+
+**Response in synchronous mode (`batch_window: "0"`):**
 
 ```json
 {
@@ -168,8 +215,8 @@ pour chains refresh            trigger an immediate registry re-fetch
 
 - [x] **v0.1.0** — single-chain drip, embedded UI, IP rate limiting
 - [x] **v0.2.0** — chain registry integration, multi-chain runtime, admin API
-- [ ] **v0.3.0** — batch window, multiple distributor wallets
-- [ ] **v0.4.0** — PoW challenge, API keys, signed-wallet tier
+- [x] **v0.3.0** — batch window, multiple distributor wallets, gRPC endpoint failover
+- [ ] **v0.4.0** — PoW challenge, API keys, signed-wallet authentication
 - [ ] **v0.5.0** — IBC plumbing
 - [ ] **v0.6.0** — IBC drips
 - [ ] **v0.7.0** — devnet tooling and local testing helpers

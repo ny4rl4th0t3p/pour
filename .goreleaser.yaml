@@ -73,5 +73,3 @@ release:
     ```sh
     go install github.com/ny4rl4th0t3p/pour/cmd/pour@{{ .Tag }}
     ```
-
-    See the [README](https://github.com/ny4rl4th0t3p/pour#readme) for configuration and usage.

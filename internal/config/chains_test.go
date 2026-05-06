@@ -653,6 +653,201 @@ chains:
 	}
 }
 
+// ----- AbuseConfig defaults -----
+
+func TestAbuseDefaults_allOmitted(t *testing.T) {
+	cfg, err := LoadChains(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	ab := cfg.Abuse
+	if !ab.PoW.Enabled {
+		t.Error("PoW.Enabled: want true when omitted")
+	}
+	if ab.PoW.Difficulty != "medium" {
+		t.Errorf("PoW.Difficulty: got %q, want medium", ab.PoW.Difficulty)
+	}
+	if !ab.APIKeys.Enabled {
+		t.Error("APIKeys.Enabled: want true when omitted")
+	}
+	if ab.SignatureChallenge.Enabled {
+		t.Error("SignatureChallenge.Enabled: want false when omitted")
+	}
+	if ab.SignatureChallenge.RequirePredicate != "none" {
+		t.Errorf("SignatureChallenge.RequirePredicate: got %q, want none", ab.SignatureChallenge.RequirePredicate)
+	}
+}
+
+func TestAbuseDefaults_explicitFalse(t *testing.T) {
+	yml := `
+abuse:
+  pow:
+    enabled: false
+  api_keys:
+    enabled: false
+chains:
+  - chain_id: osmosis-1
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if cfg.Abuse.PoW.Enabled {
+		t.Error("PoW.Enabled: want false when explicitly set to false")
+	}
+	if cfg.Abuse.APIKeys.Enabled {
+		t.Error("APIKeys.Enabled: want false when explicitly set to false")
+	}
+}
+
+func TestAbuseDefaults_explicitDifficulty(t *testing.T) {
+	yml := `
+abuse:
+  pow:
+    difficulty: "hard"
+chains:
+  - chain_id: osmosis-1
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if cfg.Abuse.PoW.Difficulty != "hard" {
+		t.Errorf("PoW.Difficulty: got %q, want hard", cfg.Abuse.PoW.Difficulty)
+	}
+}
+
+func TestAbuseDefaults_customIntDifficulty(t *testing.T) {
+	yml := `
+abuse:
+  pow:
+    difficulty: "75000"
+chains:
+  - chain_id: osmosis-1
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if cfg.Abuse.PoW.Difficulty != "75000" {
+		t.Errorf("PoW.Difficulty: got %q, want 75000", cfg.Abuse.PoW.Difficulty)
+	}
+}
+
+func TestAbuseValidation_invalidDifficulty(t *testing.T) {
+	yml := `
+abuse:
+  pow:
+    difficulty: "extreme"
+chains:
+  - chain_id: osmosis-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for invalid pow.difficulty")
+	}
+}
+
+func TestAbuseValidation_invalidPredicate(t *testing.T) {
+	yml := `
+abuse:
+  signature_challenge:
+    require_predicate: "mainnet_holder"
+chains:
+  - chain_id: osmosis-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for invalid signature_challenge.require_predicate")
+	}
+}
+
+func TestAbuseValidation_predicateNoneValid(t *testing.T) {
+	yml := `
+abuse:
+  signature_challenge:
+    require_predicate: "none"
+chains:
+  - chain_id: osmosis-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("predicate none: unexpected error: %v", err)
+	}
+}
+
+func TestAbuseValidation_hasBalanceRequiresMinAmount(t *testing.T) {
+	yml := `
+abuse:
+  signature_challenge:
+    require_predicate: "has_balance"
+chains:
+  - chain_id: osmosis-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for has_balance without predicate_min_amount")
+	}
+}
+
+func TestAbuseValidation_hasBalanceWithMinAmount(t *testing.T) {
+	yml := `
+abuse:
+  signature_challenge:
+    require_predicate: "has_balance"
+    predicate_min_amount: "1000000uatom"
+    predicate_chain_id: "cosmoshub-4"
+chains:
+  - chain_id: osmosis-1
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	sc := cfg.Abuse.SignatureChallenge
+	if sc.PredicateMinAmount != "1000000uatom" {
+		t.Errorf("PredicateMinAmount: got %q", sc.PredicateMinAmount)
+	}
+	if sc.PredicateChainID != "cosmoshub-4" {
+		t.Errorf("PredicateChainID: got %q", sc.PredicateChainID)
+	}
+}
+
+func TestAbuseValidation_hasBalanceInvalidMinAmount(t *testing.T) {
+	yml := `
+abuse:
+  signature_challenge:
+    require_predicate: "has_balance"
+    predicate_min_amount: "notacoin"
+chains:
+  - chain_id: osmosis-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("expected error for invalid predicate_min_amount")
+	}
+}
+
+func TestAbuseDefaults_signatureChallenge(t *testing.T) {
+	yml := `
+abuse:
+  signature_challenge:
+    enabled: true
+chains:
+  - chain_id: osmosis-1
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if !cfg.Abuse.SignatureChallenge.Enabled {
+		t.Error("SignatureChallenge.Enabled: want true when explicitly set")
+	}
+	if cfg.Abuse.SignatureChallenge.RequirePredicate != "none" {
+		t.Errorf("RequirePredicate: got %q, want none default", cfg.Abuse.SignatureChallenge.RequirePredicate)
+	}
+}
+
 func TestParseCoin(t *testing.T) {
 	tests := []struct {
 		input   string
