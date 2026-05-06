@@ -82,3 +82,79 @@ func TestPubKeyAnyTypeURL(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestBech32Decode_roundTrip(t *testing.T) {
+	// Decode the known cosmos address and re-encode; must round-trip exactly.
+	hrp, data, err := Bech32Decode(cosmosAddr)
+	if err != nil {
+		t.Fatalf("Bech32Decode: %v", err)
+	}
+	if hrp != "cosmos" {
+		t.Errorf("HRP: got %q, want %q", hrp, "cosmos")
+	}
+	got, err := AddressFromBytes(data, hrp)
+	if err != nil {
+		t.Fatalf("AddressFromBytes: %v", err)
+	}
+	if got != cosmosAddr {
+		t.Errorf("round-trip mismatch:\n  got:  %s\n  want: %s", got, cosmosAddr)
+	}
+}
+
+func TestBech32Decode_crossPrefix(t *testing.T) {
+	// Decoding a cosmos address and re-encoding with "osmo" must give the known osmo address.
+	_, data, err := Bech32Decode(cosmosAddr)
+	if err != nil {
+		t.Fatalf("Bech32Decode: %v", err)
+	}
+	got, err := AddressFromBytes(data, "osmo")
+	if err != nil {
+		t.Fatalf("AddressFromBytes: %v", err)
+	}
+	if got != osmoAddr {
+		t.Errorf("cross-prefix:\n  got:  %s\n  want: %s", got, osmoAddr)
+	}
+}
+
+func TestBech32Decode_invalidChecksum(t *testing.T) {
+	// Flip one data character to corrupt the checksum.
+	corrupted := cosmosAddr[:len(cosmosAddr)-3] + "zzz"
+	if _, _, err := Bech32Decode(corrupted); err == nil {
+		t.Error("expected error for invalid checksum")
+	}
+}
+
+func TestBech32Decode_invalidChar(t *testing.T) {
+	if _, _, err := Bech32Decode("cosmos1!nvalidchar"); err == nil {
+		t.Error("expected error for invalid bech32 character")
+	}
+}
+
+func TestBech32Decode_tooShort(t *testing.T) {
+	if _, _, err := Bech32Decode("cosmos1a"); err == nil {
+		t.Error("expected error for string too short to contain checksum")
+	}
+}
+
+func TestAddressFromBytes_consistency(t *testing.T) {
+	// AddressFromPubKey must produce the same result as AddressFromBytes(ripemd160(sha256(pub))).
+	priv, err := DerivePrivKey(testMnemonic, 118, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromPubKey, err := AddressFromPubKey(priv.PubKey(), "cosmos")
+	if err != nil {
+		t.Fatalf("AddressFromPubKey: %v", err)
+	}
+	_, raw, err := Bech32Decode(fromPubKey)
+	if err != nil {
+		t.Fatalf("Bech32Decode: %v", err)
+	}
+	fromBytes, err := AddressFromBytes(raw, "cosmos")
+	if err != nil {
+		t.Fatalf("AddressFromBytes: %v", err)
+	}
+	if fromBytes != fromPubKey {
+		t.Errorf("inconsistency: AddressFromPubKey=%s AddressFromBytes=%s", fromPubKey, fromBytes)
+	}
+}
