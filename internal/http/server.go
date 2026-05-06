@@ -25,7 +25,10 @@ type Deps struct {
 	RefreshInterval time.Duration
 	Serve           *config.ServeConfig
 	Store           *store.Store
-	Limiter         handlers.RateLimiter
+	Gate            handlers.Admitter
+	PowIssuer       handlers.PowIssuer
+	NonceIssuer     handlers.NonceIssuer
+	AbuseCfg        config.AbuseConfig
 	Broadcasters    map[string]handlers.Broadcaster
 	AdminHandler    nethttp.Handler // optional; mounted at /admin when non-nil
 	Version         string
@@ -49,7 +52,10 @@ func New(deps Deps) (*Server, error) {
 		RegistryRefreshMode: refreshMode,
 		Pourer:              deps.Manager,
 		Broadcasters:        deps.Broadcasters,
-		Limiter:             deps.Limiter,
+		Gate:                deps.Gate,
+		PowIssuer:           deps.PowIssuer,
+		NonceIssuer:         deps.NonceIssuer,
+		AbuseCfg:            deps.AbuseCfg,
 		DripStore:           deps.Store,
 		Version:             deps.Version,
 	})
@@ -61,6 +67,8 @@ func New(deps Deps) (*Server, error) {
 	r.Use(ourmw.Logger)
 
 	r.Post("/v1/pour", h.Pour)
+	r.Get("/v1/pow/challenge", h.PowChallenge)
+	r.Get("/v1/sign/nonce", h.SignNonce)
 	r.Get("/v1/info", h.Info)
 	r.Get("/v1/chains", h.Chains)
 	r.Get("/v1/chains/{chain_id}", h.ChainDetail)
