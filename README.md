@@ -133,6 +133,9 @@ osmo1…, etc.) that share the same underlying public key, so switching prefixes
 
 ### API keys
 
+API keys are intended for programmatic access — CI pipelines, scripts, and dev tools that call
+the pour API directly. They are not surfaced in the web UI.
+
 Issued and managed via the admin API. Each key carries an optional per-chain drip override and an
 optional per-hour request ceiling. Chain scope restricts which chains the key can drip from.
 
