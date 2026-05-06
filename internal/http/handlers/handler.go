@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse"
 	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
+	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
@@ -23,9 +25,19 @@ type ChainPourer interface {
 	Pour(chainID string, req batch.Request) error
 }
 
-// RateLimiter abstracts *ratelimit.Limiter for handler testability.
-type RateLimiter interface {
-	Check(ctx context.Context, ip, chainID string) error
+// Admitter abstracts *abuse.Gate for handler testability.
+type Admitter interface {
+	Admit(ctx context.Context, r *http.Request, req *pourapi.PourRequest, cc abuse.ChainContext) (*abuse.Decision, error)
+}
+
+// PowIssuer issues Altcha PoW challenges.
+type PowIssuer interface {
+	NewChallenge() (string, error)
+}
+
+// NonceIssuer issues single-use signed-mechanism nonces.
+type NonceIssuer interface {
+	Issue() (string, error)
 }
 
 // DripStore abstracts store.Store drip writes for handler testability.
@@ -40,7 +52,10 @@ type Deps struct {
 	RegistryRefreshMode string
 	Pourer              ChainPourer
 	Broadcasters        map[string]Broadcaster
-	Limiter             RateLimiter
+	Gate                Admitter
+	PowIssuer           PowIssuer
+	NonceIssuer         NonceIssuer
+	AbuseCfg            config.AbuseConfig
 	DripStore           DripStore
 	Version             string
 }
@@ -51,7 +66,10 @@ type Handler struct {
 	registryRefreshMode string
 	pourer              ChainPourer
 	broadcasters        map[string]Broadcaster
-	limiter             RateLimiter
+	gate                Admitter
+	powIssuer           PowIssuer
+	nonceIssuer         NonceIssuer
+	abuseCfg            config.AbuseConfig
 	dripStore           DripStore
 	version             string
 }
@@ -63,7 +81,10 @@ func New(deps Deps) *Handler {
 		registryRefreshMode: deps.RegistryRefreshMode,
 		pourer:              deps.Pourer,
 		broadcasters:        deps.Broadcasters,
-		limiter:             deps.Limiter,
+		gate:                deps.Gate,
+		powIssuer:           deps.PowIssuer,
+		nonceIssuer:         deps.NonceIssuer,
+		abuseCfg:            deps.AbuseCfg,
 		dripStore:           deps.DripStore,
 		version:             deps.Version,
 	}

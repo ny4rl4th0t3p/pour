@@ -19,9 +19,9 @@ func (h *Handler) Info(w http.ResponseWriter, _ *http.Request) {
 		RegistryRefreshMode: h.registryRefreshMode,
 		PendingFrozenCount:  h.source.PendingFrozenCount(),
 		Abuse: pourapi.AbuseInfo{
-			PoWEnabled:                false,
-			APIKeysEnabled:            false,
-			SignatureChallengeEnabled: false,
+			PoWEnabled:                h.abuseCfg.PoW.Enabled,
+			APIKeysEnabled:            h.abuseCfg.APIKeys.Enabled,
+			SignatureChallengeEnabled: h.abuseCfg.SignatureChallenge.Enabled,
 		},
 	})
 }
