@@ -1,4 +1,8 @@
 abuse:
+  pow:
+    enabled: false
+  api_keys:
+    enabled: false
   ip_rate_limit:
     requests_per_window: 3
     window: 1h
