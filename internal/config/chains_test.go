@@ -661,14 +661,14 @@ func TestAbuseDefaults_allOmitted(t *testing.T) {
 		t.Fatalf("LoadChains: %v", err)
 	}
 	ab := cfg.Abuse
-	if !ab.PoW.Enabled {
-		t.Error("PoW.Enabled: want true when omitted")
+	if ab.PoW.Enabled {
+		t.Error("PoW.Enabled: want false when omitted")
 	}
 	if ab.PoW.Difficulty != "medium" {
 		t.Errorf("PoW.Difficulty: got %q, want medium", ab.PoW.Difficulty)
 	}
-	if !ab.APIKeys.Enabled {
-		t.Error("APIKeys.Enabled: want true when omitted")
+	if ab.APIKeys.Enabled {
+		t.Error("APIKeys.Enabled: want false when omitted")
 	}
 	if ab.SignatureChallenge.Enabled {
 		t.Error("SignatureChallenge.Enabled: want false when omitted")

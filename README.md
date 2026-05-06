@@ -49,16 +49,16 @@ your own.
 
 ```yaml
 abuse:
-  # Proof-of-work gate (Altcha). Enabled by default.
+  # Proof-of-work gate (Altcha). All mechanisms default to false — enable what you need.
   pow:
     enabled: true
     difficulty: medium   # easy | medium | hard | <positive integer>
 
-  # API key authentication. Enabled by default.
+  # API key authentication.
   api_keys:
     enabled: true
 
-  # Signed-challenge authentication (Cosmos wallet signature). Disabled by default.
+  # Signed-challenge authentication (Cosmos wallet signature).
   signature_challenge:
     enabled: false
     require_predicate: none       # none | has_balance

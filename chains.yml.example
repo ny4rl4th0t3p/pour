@@ -2,9 +2,18 @@
 ## Copy to chains.yml and edit. Set POUR_MNEMONIC in your environment.
 
 abuse:
+  # All mechanisms default to false — enable what you need.
+  # pow:
+  #   enabled: true
+  #   difficulty: medium    # easy | medium | hard | <positive integer>
+  # api_keys:
+  #   enabled: true
+  # signature_challenge:
+  #   enabled: true
+  #   require_predicate: none   # none | has_balance
   ip_rate_limit:
     requests_per_window: 10   # number of requests allowed per window
-    window: 1h          # duration window: 1h, 30m, 5m, etc. (default: 1h)
+    window: 1h                # duration window: 1h, 30m, 5m, etc. (default: 1h)
 
 chains:
   - chain_id: osmosis-1
