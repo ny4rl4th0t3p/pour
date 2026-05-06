@@ -12,18 +12,22 @@ type DripRecord struct {
 	Coins       string // e.g. "1000000uosmo"
 	RequesterIP string
 	TxHash      string
-	Status      string // "confirmed"
+	Status      string // "queued"|"submitted"|"confirmed"|"failed"
+	Mechanism   string // "anonymous"|"pow"|"api_key"|"signed"
 	RequestedAt int64  // Unix seconds
 	CompletedAt int64  // Unix seconds
 }
 
 // RecordDrip inserts a drip record into the audit log and returns the new row id.
 func (s *Store) RecordDrip(ctx context.Context, d DripRecord) (int64, error) {
+	if d.Mechanism == "" {
+		d.Mechanism = "anonymous"
+	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO drips
-			(chain_id, address, coins, requester_ip, tx_hash, status, requested_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, d.ChainID, d.Address, d.Coins, d.RequesterIP, d.TxHash, d.Status, d.RequestedAt, d.CompletedAt)
+			(chain_id, address, coins, requester_ip, tx_hash, status, mechanism, requested_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, d.ChainID, d.Address, d.Coins, d.RequesterIP, d.TxHash, d.Status, d.Mechanism, d.RequestedAt, d.CompletedAt)
 	if err != nil {
 		return 0, fmt.Errorf("store: record drip: %w", err)
 	}
