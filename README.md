@@ -1,7 +1,5 @@
 # pour
 
-> **This README documents v0.3.0. It will not be accurate for earlier or later versions.**
-
 > **This project is under active development.** The API, config schema, and CLI flags are not stable until v1.0.0.
 > Pre-1.0 minor releases may add new config keys but aim not to remove or rename existing ones. v1.0.0 is planned to
 > follow v0.7.0 once the feature set is complete and the interfaces have been battle-tested — hopefully without too long
