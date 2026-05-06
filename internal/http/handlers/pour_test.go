@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse"
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
 	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
@@ -32,9 +33,22 @@ func (m *mockBroadcaster) BuildAndBroadcast(_ context.Context, _ tx.SendRequest)
 	return m.result, m.err
 }
 
-type mockRateLimiter struct{ err error }
+// mockAdmitter stubs the Gate for pour handler tests.
+type mockAdmitter struct {
+	decision *abuse.Decision
+	err      error
+}
 
-func (m *mockRateLimiter) Check(_ context.Context, _, _ string) error { return m.err }
+func (m *mockAdmitter) Admit(_ context.Context, _ *http.Request, _ *pourapi.PourRequest, _ abuse.ChainContext) (*abuse.Decision, error) {
+	return m.decision, m.err
+}
+
+func okAdmitter() *mockAdmitter {
+	return &mockAdmitter{decision: &abuse.Decision{
+		Mechanism: abuse.MechanismAnonymous,
+		DripCoin:  tx.Coin{Amount: "1000000", Denom: "uosmo"},
+	}}
+}
 
 type mockDripStore struct{ id int64 }
 
@@ -72,18 +86,27 @@ func (*stubChainSource) PendingFrozenCount() int { return 0 }
 var testSource = &stubChainSource{
 	snaps: map[string]chain.ChainSnapshot{
 		"osmosis-1": {
-			Info: &chainregistry.ChainInfo{ChainID: "osmosis-1", Bech32Prefix: "osmo", Slip44: 118, LastChanged: testLastChanged},
-			Drip: chainregistry.DripPolicy{Anonymous: "1000000uosmo"},
+			Info: &chainregistry.ChainInfo{
+				ChainID:      "osmosis-1",
+				Bech32Prefix: "osmo",
+				Slip44:       118,
+				KeyAlgo:      chainregistry.KeyAlgoSecp256k1,
+				LastChanged:  testLastChanged,
+			},
+			Drip: chainregistry.DripPolicy{
+				Anonymous:           "1000000uosmo",
+				MaxPerAddressPerDay: "50000000uosmo",
+			},
 		},
 	},
 }
 
-func newTestHandler(t *testing.T, bc Broadcaster, rl RateLimiter, ds DripStore) *Handler {
+func newTestHandler(t *testing.T, bc Broadcaster, gate Admitter, ds DripStore) *Handler {
 	t.Helper()
 	return New(Deps{
 		Source:       testSource,
 		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
-		Limiter:      rl,
+		Gate:         gate,
 		DripStore:    ds,
 		Version:      "test",
 	})
@@ -100,7 +123,7 @@ func pourRequest(body string) *http.Request {
 func TestPour_success(t *testing.T) {
 	bc := &mockBroadcaster{result: &tx.BroadcastResult{TxHash: "TXHASH", Height: 100}}
 	ds := &mockDripStore{id: 42}
-	h := newTestHandler(t, bc, &mockRateLimiter{}, ds)
+	h := newTestHandler(t, bc, okAdmitter(), ds)
 
 	w := httptest.NewRecorder()
 	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
@@ -124,10 +147,13 @@ func TestPour_success(t *testing.T) {
 	if resp.Status != "confirmed" {
 		t.Errorf("Status: got %q, want confirmed", resp.Status)
 	}
+	if resp.Mechanism != string(abuse.MechanismAnonymous) {
+		t.Errorf("Mechanism: got %q, want %q", resp.Mechanism, abuse.MechanismAnonymous)
+	}
 }
 
 func TestPour_chainNotFound(t *testing.T) {
-	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+	h := newTestHandler(t, &mockBroadcaster{}, okAdmitter(), &mockDripStore{})
 	w := httptest.NewRecorder()
 	h.Pour(w, pourRequest(`{"chain_id":"unknown-1","address":"osmo1abc123defg"}`))
 	if w.Code != http.StatusNotFound {
@@ -136,7 +162,7 @@ func TestPour_chainNotFound(t *testing.T) {
 }
 
 func TestPour_invalidAddress(t *testing.T) {
-	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+	h := newTestHandler(t, &mockBroadcaster{}, okAdmitter(), &mockDripStore{})
 	w := httptest.NewRecorder()
 	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"cosmos1wrongprefix"}`))
 	if w.Code != http.StatusBadRequest {
@@ -145,8 +171,8 @@ func TestPour_invalidAddress(t *testing.T) {
 }
 
 func TestPour_rateLimited(t *testing.T) {
-	exc := &ratelimit.ErrRateLimitExceeded{RetryAfter: 30 * time.Second}
-	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{err: exc}, &mockDripStore{})
+	rlErr := &ratelimit.ErrRateLimitExceeded{RetryAfter: 30 * time.Second}
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: rlErr}, &mockDripStore{})
 	w := httptest.NewRecorder()
 	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
 	if w.Code != http.StatusTooManyRequests {
@@ -157,9 +183,36 @@ func TestPour_rateLimited(t *testing.T) {
 	}
 }
 
+func TestPour_unauthenticated(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrUnauthenticated}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status: got %d, want 401", w.Code)
+	}
+}
+
+func TestPour_forbidden(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrForbidden}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403", w.Code)
+	}
+}
+
+func TestPour_powRequired(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrPoWRequired}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", w.Code)
+	}
+}
+
 func TestPour_broadcastError(t *testing.T) {
 	bc := &mockBroadcaster{err: tx.ErrChainUnreachable}
-	h := newTestHandler(t, bc, &mockRateLimiter{}, &mockDripStore{})
+	h := newTestHandler(t, bc, okAdmitter(), &mockDripStore{})
 	w := httptest.NewRecorder()
 	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
 	if w.Code != http.StatusInternalServerError {
@@ -168,7 +221,7 @@ func TestPour_broadcastError(t *testing.T) {
 }
 
 func TestPour_badJSON(t *testing.T) {
-	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+	h := newTestHandler(t, &mockBroadcaster{}, okAdmitter(), &mockDripStore{})
 	w := httptest.NewRecorder()
 	h.Pour(w, pourRequest(`not json`))
 	if w.Code != http.StatusBadRequest {
@@ -207,7 +260,7 @@ func TestPour_async_dripRecordTransition(t *testing.T) {
 	h := New(Deps{
 		Source:    testSource,
 		Pourer:    pourer,
-		Limiter:   &mockRateLimiter{},
+		Gate:      okAdmitter(),
 		DripStore: ds,
 		Version:   "test",
 	})
@@ -232,40 +285,6 @@ func TestPour_async_dripRecordTransition(t *testing.T) {
 	}
 }
 
-func TestPour_realLimiter_rateLimited(t *testing.T) {
-	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("store.New: %v", err)
-	}
-	t.Cleanup(func() { s.Close() })
-
-	limiter := ratelimit.New(s, 1, 5*time.Second)
-	bc := &mockBroadcaster{result: &tx.BroadcastResult{TxHash: "TX1"}}
-
-	h := New(Deps{
-		Source:       testSource,
-		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
-		Limiter:      limiter,
-		DripStore:    s,
-		Version:      "test",
-	})
-
-	// First request should succeed.
-	w1 := httptest.NewRecorder()
-	h.Pour(w1, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
-	if w1.Code != http.StatusOK {
-		t.Fatalf("first request: got %d, want 200", w1.Code)
-	}
-
-	// Second request with same IP exceeds limit of 1.
-	bc.result = &tx.BroadcastResult{TxHash: "TX2"}
-	w2 := httptest.NewRecorder()
-	h.Pour(w2, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
-	if w2.Code != http.StatusTooManyRequests {
-		t.Fatalf("second request: got %d, want 429", w2.Code)
-	}
-}
-
 // mockPourer simulates the async batch pool: routing succeeds, then delivers result.
 type mockPourer struct {
 	err    error // if non-nil, Pour returns this immediately
@@ -285,7 +304,7 @@ func newAsyncTestHandler(t *testing.T, pourer ChainPourer, ds DripStore) *Handle
 	return New(Deps{
 		Source:    testSource,
 		Pourer:    pourer,
-		Limiter:   &mockRateLimiter{},
+		Gate:      okAdmitter(),
 		DripStore: ds,
 		Version:   "test",
 	})
@@ -355,7 +374,7 @@ func TestPour_async_syncFallback(t *testing.T) {
 		Source:       testSource,
 		Pourer:       pourer,
 		Broadcasters: map[string]Broadcaster{"osmosis-1": bc},
-		Limiter:      &mockRateLimiter{},
+		Gate:         okAdmitter(),
 		DripStore:    ds,
 		Version:      "test",
 	})
@@ -387,7 +406,7 @@ func newChainDetailRequest(chainID string) *http.Request {
 }
 
 func TestChainDetail_found(t *testing.T) {
-	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+	h := newTestHandler(t, &mockBroadcaster{}, okAdmitter(), &mockDripStore{})
 
 	// chi router is needed for URL params; call via the router.
 	router := h.testRouter()
@@ -416,7 +435,7 @@ func TestChainDetail_found(t *testing.T) {
 }
 
 func TestChainDetail_notFound(t *testing.T) {
-	h := newTestHandler(t, &mockBroadcaster{}, &mockRateLimiter{}, &mockDripStore{})
+	h := newTestHandler(t, &mockBroadcaster{}, okAdmitter(), &mockDripStore{})
 	router := h.testRouter()
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, newChainDetailRequest("unknown-1"))

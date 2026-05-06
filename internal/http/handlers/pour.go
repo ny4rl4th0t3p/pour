@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse"
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
 	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
@@ -42,38 +43,83 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := extractIP(r.RemoteAddr)
-	if err := h.limiter.Check(r.Context(), ip, req.ChainID); err != nil {
-		var rl *ratelimit.ErrRateLimitExceeded
-		if errors.As(err, &rl) {
-			pourRequestsTotal.WithLabelValues(req.ChainID, "rate_limited").Inc()
-			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(rl.RetryAfter.Seconds()))))
-			writeError(w, http.StatusTooManyRequests, err.Error())
-			return
-		}
-		slog.Error("rate limit check failed", "error", err, "ip", ip, "chain_id", req.ChainID) //nolint:gosec // ip sanitized by net.SplitHostPort
-		writeError(w, http.StatusInternalServerError, "rate limit check failed")
-		return
-	}
-
-	coin, err := config.ParseCoin(snap.Drip.Anonymous)
+	cc, err := buildChainContext(snap)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "pour: invalid drip config", "chain_id", req.ChainID, "error", err)
 		writeError(w, http.StatusInternalServerError, "invalid drip config")
 		return
 	}
 
-	coins := tx.Coins{{Amount: coin.Amount, Denom: coin.Denom}}
-	amount := fmt.Sprintf("%s%s", coin.Amount, coin.Denom)
+	decision, err := h.gate.Admit(r.Context(), r, &req, cc)
+	if err != nil {
+		h.handleAdmitError(w, req.ChainID, err)
+		return
+	}
+
+	dripCoin := decision.DripCoin
+	mechanism := string(decision.Mechanism)
+	coins := tx.Coins{{Amount: dripCoin.Amount, Denom: dripCoin.Denom}}
+	amount := fmt.Sprintf("%s%s", dripCoin.Amount, dripCoin.Denom)
+	ip := extractIP(r.RemoteAddr)
 	now := time.Now().Unix()
 
 	if h.pourer != nil {
-		if handled := h.tryPoolRoute(w, r, req.ChainID, req.Address, coins, amount, ip, now); handled {
+		if handled := h.tryPoolRoute(w, r, req.ChainID, req.Address, coins, amount, ip, mechanism, now); handled {
 			return
 		}
 	}
 
-	h.pourSync(w, r, req.ChainID, req.Address, coins, amount, ip, now)
+	h.pourSync(w, r, req.ChainID, req.Address, coins, amount, ip, mechanism, now)
+}
+
+func buildChainContext(snap chain.ChainSnapshot) (abuse.ChainContext, error) {
+	anonCoin, err := config.ParseCoin(snap.Drip.Anonymous)
+	if err != nil {
+		return abuse.ChainContext{}, fmt.Errorf("parse drip.anonymous: %w", err)
+	}
+	maxPerDay, err := config.ParseCoin(snap.Drip.MaxPerAddressPerDay)
+	if err != nil {
+		return abuse.ChainContext{}, fmt.Errorf("parse drip.max_per_address_per_day: %w", err)
+	}
+	var signedCoin tx.Coin
+	if snap.Drip.Signed != "" {
+		if signedCoin, err = config.ParseCoin(snap.Drip.Signed); err != nil {
+			return abuse.ChainContext{}, fmt.Errorf("parse drip.signed: %w", err)
+		}
+	}
+	return abuse.ChainContext{
+		ChainID:       snap.Info.ChainID,
+		KeyAlgo:       string(snap.Info.KeyAlgo),
+		DripAnonymous: anonCoin,
+		DripSigned:    signedCoin,
+		MaxPerDay:     maxPerDay,
+	}, nil
+}
+
+func (*Handler) handleAdmitError(w http.ResponseWriter, chainID string, err error) {
+	var rl *ratelimit.ErrRateLimitExceeded
+	switch {
+	case errors.As(err, &rl):
+		pourRequestsTotal.WithLabelValues(chainID, "rate_limited").Inc()
+		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(rl.RetryAfter.Seconds()))))
+		writeError(w, http.StatusTooManyRequests, err.Error())
+	case errors.Is(err, abuse.ErrUnauthenticated):
+		pourRequestsTotal.WithLabelValues(chainID, "unauthenticated").Inc()
+		writeError(w, http.StatusUnauthorized, err.Error())
+	case errors.Is(err, abuse.ErrForbidden), errors.Is(err, abuse.ErrPredicateFailed):
+		pourRequestsTotal.WithLabelValues(chainID, "forbidden").Inc()
+		writeError(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, abuse.ErrPoWRequired),
+		errors.Is(err, abuse.ErrBadPoW),
+		errors.Is(err, abuse.ErrNonceRequired),
+		errors.Is(err, abuse.ErrBadNonce),
+		errors.Is(err, abuse.ErrBadSignature):
+		pourRequestsTotal.WithLabelValues(chainID, "bad_credential").Inc()
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		slog.Error("gate.Admit failed", "error", err, "chain_id", chainID)
+		writeError(w, http.StatusInternalServerError, "admission check failed")
+	}
 }
 
 // tryPoolRoute routes the request to the batch pool. Returns true when the request
@@ -81,7 +127,7 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 // returned and the caller should fall through to the sync path.
 func (h *Handler) tryPoolRoute(
 	w http.ResponseWriter, r *http.Request,
-	chainID, address string, coins tx.Coins, amount, ip string, now int64,
+	chainID, address string, coins tx.Coins, amount, ip, mechanism string, now int64,
 ) bool {
 	ch := make(chan batch.Result, 1)
 	routeErr := h.pourer.Pour(chainID, batch.Request{
@@ -96,6 +142,7 @@ func (h *Handler) tryPoolRoute(
 			Address:     address,
 			Coins:       amount,
 			RequesterIP: ip,
+			Mechanism:   mechanism,
 			Status:      pourapi.StatusQueued,
 			RequestedAt: now,
 		})
@@ -104,9 +151,10 @@ func (h *Handler) tryPoolRoute(
 		}
 		pourRequestsTotal.WithLabelValues(chainID, "queued").Inc()
 		writeJSON(w, http.StatusAccepted, pourapi.PourResponse{
-			DripID: dripID,
-			Status: pourapi.StatusQueued,
-			Amount: amount,
+			DripID:    dripID,
+			Status:    pourapi.StatusQueued,
+			Amount:    amount,
+			Mechanism: mechanism,
 		})
 		// context.WithoutCancel detaches from the request so the goroutine outlives the response
 		// while still carrying request-scoped values (e.g. trace IDs).
@@ -160,7 +208,13 @@ func (h *Handler) awaitDrip(ctx context.Context, chainID string, dripID int64, c
 }
 
 // pourSync handles the synchronous broadcast path (batch_window = "0" or Pourer not set).
-func (h *Handler) pourSync(w http.ResponseWriter, r *http.Request, chainID, address string, coins tx.Coins, amount, ip string, now int64) {
+func (h *Handler) pourSync(
+	w http.ResponseWriter,
+	r *http.Request,
+	chainID, address string,
+	coins tx.Coins, amount, ip, mechanism string,
+	now int64,
+) {
 	bc, ok := h.broadcasters[chainID]
 	if !ok {
 		writeError(w, http.StatusServiceUnavailable, "chain broadcaster not available")
@@ -184,6 +238,7 @@ func (h *Handler) pourSync(w http.ResponseWriter, r *http.Request, chainID, addr
 		Address:     address,
 		Coins:       amount,
 		RequesterIP: ip,
+		Mechanism:   mechanism,
 		TxHash:      result.TxHash,
 		Status:      pourapi.StatusConfirmed,
 		RequestedAt: now,
@@ -195,10 +250,11 @@ func (h *Handler) pourSync(w http.ResponseWriter, r *http.Request, chainID, addr
 
 	pourRequestsTotal.WithLabelValues(chainID, "confirmed").Inc()
 	writeJSON(w, http.StatusOK, pourapi.PourResponse{
-		DripID: dripID,
-		Status: pourapi.StatusConfirmed,
-		Amount: amount,
-		TxHash: result.TxHash,
+		DripID:    dripID,
+		Status:    pourapi.StatusConfirmed,
+		Amount:    amount,
+		Mechanism: mechanism,
+		TxHash:    result.TxHash,
 	})
 }
 

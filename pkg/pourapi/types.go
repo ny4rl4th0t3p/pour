@@ -34,10 +34,21 @@ type PourRequest struct {
 // Status is "queued" (async batch path) or "confirmed" (sync path).
 // TxHash is omitted when status is "queued".
 type PourResponse struct {
-	DripID int64  `json:"drip_id"`
-	Status string `json:"status"`
-	Amount string `json:"amount"` // e.g. "1000000uosmo"
-	TxHash string `json:"tx_hash,omitempty"`
+	DripID    int64  `json:"drip_id"`
+	Status    string `json:"status"`
+	Amount    string `json:"amount"` // e.g. "1000000uosmo"
+	Mechanism string `json:"mechanism"`
+	TxHash    string `json:"tx_hash,omitempty"`
+}
+
+// ChallengeResponse is returned by GET /v1/pow/challenge.
+type ChallengeResponse struct {
+	Challenge string `json:"challenge"`
+}
+
+// NonceResponse is returned by GET /v1/sign/nonce.
+type NonceResponse struct {
+	Nonce string `json:"nonce"`
 }
 
 // InfoResponse is returned by GET /v1/info.

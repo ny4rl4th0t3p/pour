@@ -50,6 +50,16 @@ func TestInfo(t *testing.T) {
 	if resp.RegistryLastFetched != "" {
 		t.Errorf("registry_last_fetched: stub source returns zero time, want empty string, got %q", resp.RegistryLastFetched)
 	}
+	// Default AbuseCfg — all mechanism flags false.
+	if resp.Abuse.PoWEnabled {
+		t.Error("pow_enabled: want false for zero AbuseCfg")
+	}
+	if resp.Abuse.APIKeysEnabled {
+		t.Error("api_keys_enabled: want false for zero AbuseCfg")
+	}
+	if resp.Abuse.SignatureChallengeEnabled {
+		t.Error("signature_challenge_enabled: want false for zero AbuseCfg")
+	}
 }
 
 func TestChains(t *testing.T) {

@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse"
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
@@ -29,6 +31,34 @@ type fixedBroadcaster struct{}
 
 func (fixedBroadcaster) BuildAndBroadcast(_ context.Context, _ tx.SendRequest) (*tx.BroadcastResult, error) {
 	return &tx.BroadcastResult{TxHash: "TESTHASH", Height: 1}, nil
+}
+
+// passthroughAdmitter always admits with an anonymous decision using the chain's configured drip.
+type passthroughAdmitter struct{}
+
+func (*passthroughAdmitter) Admit(_ context.Context, _ *nethttp.Request, _ *pourapi.PourRequest, cc abuse.ChainContext) (*abuse.Decision, error) {
+	return &abuse.Decision{Mechanism: abuse.MechanismAnonymous, DripCoin: cc.DripAnonymous}, nil
+}
+
+// countingAdmitter enforces a per-chain request limit, mirroring IP rate-limit behavior.
+type countingAdmitter struct {
+	mu     sync.Mutex
+	counts map[string]int
+	limit  int
+}
+
+func newCountingAdmitter(limit int) *countingAdmitter {
+	return &countingAdmitter{counts: make(map[string]int), limit: limit}
+}
+
+func (a *countingAdmitter) Admit(_ context.Context, _ *nethttp.Request, _ *pourapi.PourRequest, cc abuse.ChainContext) (*abuse.Decision, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.counts[cc.ChainID]++
+	if a.counts[cc.ChainID] > a.limit {
+		return nil, &ratelimit.ErrRateLimitExceeded{RetryAfter: time.Hour}
+	}
+	return &abuse.Decision{Mechanism: abuse.MechanismAnonymous, DripCoin: cc.DripAnonymous}, nil
 }
 
 // newMultiChainSrv creates a test server with two standalone chains (osmosis-1, cosmos-1).
@@ -54,7 +84,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 				Slip44:       &slip44,
 				Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
 				FeeTokens:    []config.FeeTokenConfig{{Denom: "uosmo"}},
-				Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
+				Drip:         config.DripConfig{Anonymous: "1000000uosmo", MaxPerAddressPerDay: "50000000uosmo"},
 				BatchWindow:  "0", // sync mode so tests use the injected broadcaster
 			},
 			{
@@ -65,7 +95,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 				Slip44:       &slip44,
 				Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
 				FeeTokens:    []config.FeeTokenConfig{{Denom: "uatom"}},
-				Drip:         config.DripConfig{Anonymous: "1000000uatom"},
+				Drip:         config.DripConfig{Anonymous: "1000000uatom", MaxPerAddressPerDay: "50000000uatom"},
 				BatchWindow:  "0", // sync mode so tests use the injected broadcaster
 			},
 		},
@@ -80,7 +110,7 @@ func newMultiChainSrv(t *testing.T, limitPerChain int) *httptest.Server {
 		Manager: mgr,
 		Serve:   &config.ServeConfig{Listen: ":0"},
 		Store:   s,
-		Limiter: ratelimit.New(s, limitPerChain, time.Hour),
+		Gate:    newCountingAdmitter(limitPerChain),
 		Broadcasters: map[string]handlers.Broadcaster{
 			"osmosis-1": fixedBroadcaster{},
 			"cosmos-1":  fixedBroadcaster{},
@@ -115,7 +145,7 @@ func newTestSrv(t *testing.T) *httptest.Server {
 			Slip44:       &slip44,
 			Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
 			FeeTokens:    []config.FeeTokenConfig{{Denom: "uosmo"}},
-			Drip:         config.DripConfig{Anonymous: "1000000uosmo"},
+			Drip:         config.DripConfig{Anonymous: "1000000uosmo", MaxPerAddressPerDay: "50000000uosmo"},
 			BatchWindow:  "0", // sync mode so tests use the injected broadcaster
 		}},
 	}
@@ -133,7 +163,7 @@ func newTestSrv(t *testing.T) *httptest.Server {
 		Manager:      mgr,
 		Serve:        &config.ServeConfig{Listen: ":0"},
 		Store:        s,
-		Limiter:      ratelimit.New(s, 10, time.Hour),
+		Gate:         &passthroughAdmitter{},
 		Broadcasters: map[string]handlers.Broadcaster{"osmosis-1": fixedBroadcaster{}},
 		Version:      "test",
 	})
@@ -341,7 +371,7 @@ func TestServer_multichain_pour(t *testing.T) {
 }
 
 func TestServer_multichain_ratelimit_independent(t *testing.T) {
-	// limit=1 per chain per hour; exhausting osmosis-1's limit must not block cosmos-1.
+	// limit=1 per chain; exhausting osmosis-1's limit must not block cosmos-1.
 	srv := newMultiChainSrv(t, 1)
 	defer srv.Close()
 
@@ -359,7 +389,7 @@ func TestServer_multichain_ratelimit_independent(t *testing.T) {
 		t.Fatalf("osmosis-1 second pour: got %d, want 429", r2.StatusCode)
 	}
 
-	// First pour on cosmos-1: must succeed — rate limit is scoped per chain ID.
+	// First pour on cosmos-1: must succeed — limit is scoped per chain ID.
 	r3 := post(t, srv, `{"chain_id":"cosmos-1","address":"cosmos1abc123defg"}`)
 	defer r3.Body.Close()
 	if r3.StatusCode != nethttp.StatusOK {

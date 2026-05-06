@@ -34,7 +34,7 @@ type AbuseConfig struct {
 
 // AbusePoWConfig configures the Altcha proof-of-work gate.
 type AbusePoWConfig struct {
-	// Enabled defaults to true when the key is absent from YAML.
+	// Enabled defaults to false. Set to true to require a valid Altcha solution.
 	Enabled bool `koanf:"enabled"`
 	// Difficulty is "easy", "medium", "hard", or a raw positive integer string.
 	// Defaults to "medium".
@@ -43,7 +43,7 @@ type AbusePoWConfig struct {
 
 // AbuseAPIKeysConfig configures the API key authentication mechanism.
 type AbuseAPIKeysConfig struct {
-	// Enabled defaults to true when the key is absent from YAML.
+	// Enabled defaults to false. Set to true to allow Bearer API key auth.
 	Enabled bool `koanf:"enabled"`
 }
 
@@ -259,17 +259,10 @@ var (
 	validPredicates      = map[string]bool{"none": true, "has_balance": true}
 )
 
-// setAbuseDefaults applies defaults for fields whose zero value (false/"") is ambiguous.
-// Must be called after koanf unmarshal because koanf cannot distinguish absent from false.
-func setAbuseDefaults(k *koanf.Koanf, cfg *AbuseConfig) {
-	if !k.Exists("abuse.pow.enabled") {
-		cfg.PoW.Enabled = true
-	}
+// setAbuseDefaults applies defaults for fields whose zero value ("") is ambiguous.
+func setAbuseDefaults(cfg *AbuseConfig) {
 	if cfg.PoW.Difficulty == "" {
 		cfg.PoW.Difficulty = "medium"
-	}
-	if !k.Exists("abuse.api_keys.enabled") {
-		cfg.APIKeys.Enabled = true
 	}
 	if cfg.SignatureChallenge.RequirePredicate == "" {
 		cfg.SignatureChallenge.RequirePredicate = defaultPredicate
@@ -320,7 +313,7 @@ func LoadChains(path string) (*ChainsConfig, error) {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
 	}
 
-	setAbuseDefaults(k, &cfg.Abuse)
+	setAbuseDefaults(&cfg.Abuse)
 	if err := validateAbuseConfig(&cfg.Abuse); err != nil {
 		return nil, err
 	}
