@@ -76,6 +76,7 @@ func newChain(
 
 	batchDur, err := cfg.BatchWindowDuration()
 	if err != nil {
+		_ = client.Close()
 		return nil, err
 	}
 
