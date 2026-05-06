@@ -7,10 +7,27 @@ const (
 	StatusFailed    = "failed"
 )
 
+// PowCredential carries the Altcha challenge and client-solved solution for the PoW mechanism.
+type PowCredential struct {
+	Challenge string `json:"challenge"`
+	Solution  string `json:"solution"`
+}
+
+// SigCredential carries the signed-challenge credentials for the signed mechanism.
+// Nonce is the value from GET /v1/sign/nonce that the client signed.
+type SigCredential struct {
+	Nonce     string `json:"nonce"`
+	Address   string `json:"address"`
+	Pubkey    string `json:"pubkey"`
+	Signature string `json:"signature"`
+}
+
 // PourRequest is the body for POST /v1/pour.
 type PourRequest struct {
-	ChainID string `json:"chain_id"`
-	Address string `json:"address"`
+	ChainID   string         `json:"chain_id"`
+	Address   string         `json:"address"`
+	Pow       *PowCredential `json:"pow,omitempty"`
+	Signature *SigCredential `json:"signature,omitempty"`
 }
 
 // PourResponse is returned on a successful POST /v1/pour.
