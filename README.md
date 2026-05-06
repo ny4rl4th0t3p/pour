@@ -204,9 +204,11 @@ curl -X POST http://localhost:8080/v1/pour \
 
 ```
 POST /v1/pour                              drip tokens to an address
+GET  /v1/pow/challenge                     fetch an Altcha PoW challenge (when pow.enabled)
+GET  /v1/sign/nonce                        fetch a one-time signing nonce (when signature_challenge.enabled)
 GET  /v1/chains                            list enabled chains and drip config
 GET  /v1/chains/{chain_id}                 detail for a single chain
-GET  /v1/info                              version and feature flags
+GET  /v1/info                              version, abuse flags, and registry status
 GET  /health                               liveness probe — {"status":"ok"}
 GET  /metrics                              Prometheus metrics (if POUR_METRICS=true)
 
@@ -240,7 +242,8 @@ curl -X POST http://localhost:8080/v1/pour \
 {
   "drip_id": 42,
   "status": "queued",
-  "amount": "1000000uosmo"
+  "amount": "1000000uosmo",
+  "mechanism": "anonymous"
 }
 ```
 
@@ -255,6 +258,7 @@ confirmation before the response is returned.
   "drip_id": 1,
   "status": "confirmed",
   "amount": "1000000uosmo",
+  "mechanism": "anonymous",
   "tx_hash": "ABC123..."
 }
 ```
