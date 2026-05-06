@@ -84,9 +84,9 @@ func (w *Window) Start(ctx context.Context) {
 func (w *Window) Depth() int { return len(w.queue) }
 
 func (w *Window) doFlush() {
-	batch := make([]Request, 0, len(w.queue))
+	batch := make([]Request, 0, w.maxRecipients)
 loop:
-	for {
+	for len(batch) < w.maxRecipients {
 		select {
 		case req := <-w.queue:
 			batch = append(batch, req)
