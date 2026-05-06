@@ -85,7 +85,8 @@ chains:
   - chain_id: osmosis-1
     enabled: true
     drip:
-      anonymous: "1000000uosmo"
+      anonymous: "1000000uosmo"           # amount for anonymous and PoW requests
+      signed: "5000000uosmo"              # amount for signed-wallet requests (optional)
       max_per_address_per_day: "50000000uosmo"
 
     # Concurrency — optional; defaults shown.
@@ -112,6 +113,74 @@ chains:
     drip:
       anonymous: "1000000umynet"
       max_per_address_per_day: "10000000umynet"
+```
+
+## Abuse prevention
+
+Pour evaluates each request through a priority-ordered gate. The first mechanism that matches
+determines how much the requester receives:
+
+| Priority | Mechanism     | Drip amount                                             | Requirement                                        |
+|----------|---------------|---------------------------------------------------------|----------------------------------------------------|
+| 1        | **API key**   | Per-key override, or `drip.anonymous`                   | `Authorization: Bearer pour_key_…`                 |
+| 2        | **Signed**    | `drip.signed` (falls back to `drip.anonymous` if unset) | Cosmos wallet signature over a server-issued nonce |
+| 3        | **PoW**       | `drip.anonymous`                                        | Valid Altcha solution from `GET /v1/pow/challenge` |
+| 4        | **Anonymous** | `drip.anonymous`                                        | Nothing — if all mechanisms are disabled           |
+
+The per-address daily cap (`drip.max_per_address_per_day`) is always enforced against the resolved
+drip amount, regardless of mechanism. The same key is recognised across all chain prefixes (cosmos1…,
+osmo1…, etc.) that share the same underlying public key, so switching prefixes cannot bypass the cap.
+
+### API keys
+
+Issued and managed via the admin API. Each key carries an optional per-chain drip override and an
+optional per-hour request ceiling. Chain scope restricts which chains the key can drip from.
+
+```sh
+# Issue a key
+curl -X POST http://localhost:8080/admin/api-keys \
+  -H "Authorization: Bearer $(cat .pour-admin-token)" \
+  -H 'Content-Type: application/json' \
+  -d '{"label":"ci-bot","chain_scope":["osmosis-1"],"per_chain_drips":{"osmosis-1":"3000000uosmo"}}'
+
+# Use the returned secret in pour requests
+curl -X POST http://localhost:8080/v1/pour \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer pour_key_…' \
+  -d '{"chain_id":"osmosis-1","address":"osmo1…"}'
+```
+
+### Signed wallet
+
+The client fetches a one-time nonce from `GET /v1/sign/nonce`, signs it using the Cosmos ADR-036
+arbitrary-message format (supported by Keplr and most Cosmos wallets), then includes the signature
+in the pour request. The server verifies that the signature is valid and that the public key
+corresponds to the claimed address.
+
+An optional on-chain predicate can be required before the higher drip amount is granted:
+
+| `require_predicate` | What is checked                                                   |
+|---------------------|-------------------------------------------------------------------|
+| `none` *(default)*  | Signature only — no chain query                                   |
+| `has_balance`       | Signer's balance on `predicate_chain_id` ≥ `predicate_min_amount` |
+
+`predicate_chain_id` defaults to the chain being dripped; set it to e.g. `cosmoshub-4` to require
+holders of ATOM regardless of which testnet they are requesting from. Chains used only as predicate
+sources should have `enabled: false` — enabling them would open a drip endpoint for a chain the
+faucet has no funds on.
+
+### Proof-of-work
+
+The Altcha widget embedded in the UI handles PoW automatically. For direct API access:
+
+```sh
+# Fetch a challenge
+CHALLENGE=$(curl -s http://localhost:8080/v1/pow/challenge | jq -r .challenge)
+
+# Solve it client-side (Altcha JS library) and include the solution in the pour request
+curl -X POST http://localhost:8080/v1/pour \
+  -H 'Content-Type: application/json' \
+  -d "{\"chain_id\":\"osmosis-1\",\"address\":\"osmo1…\",\"pow\":{\"challenge\":\"$CHALLENGE\",\"solution\":\"…\"}}"
 ```
 
 ## Environment variables
