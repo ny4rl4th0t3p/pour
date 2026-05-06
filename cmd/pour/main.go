@@ -13,7 +13,6 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/cosmos/go-bip39"
-	"github.com/ny4rl4th0t3p/pour/internal/tx"
 
 	"github.com/ny4rl4th0t3p/pour/internal/abuse"
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/apikey"
@@ -27,6 +26,7 @@ import (
 	pourhttp "github.com/ny4rl4th0t3p/pour/internal/http"
 	"github.com/ny4rl4th0t3p/pour/internal/http/handlers"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
+	"github.com/ny4rl4th0t3p/pour/internal/tx"
 )
 
 var (
