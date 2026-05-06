@@ -26,11 +26,13 @@ type stubBroadcaster struct {
 	sendCalls   int
 	multiCalls  int
 	lastSendReq tx.SendRequest
+	allSendReqs []tx.SendRequest
 }
 
 func (s *stubBroadcaster) BuildAndBroadcast(_ context.Context, req tx.SendRequest) (*tx.BroadcastResult, error) {
 	s.sendCalls++
 	s.lastSendReq = req
+	s.allSendReqs = append(s.allSendReqs, req)
 	return s.sendResult, s.sendErr
 }
 
@@ -166,6 +168,34 @@ func TestFlush_multiSendFails_splitSucceeds(t *testing.T) {
 	}
 	if c.sendFailStreak.Load() != 0 {
 		t.Errorf("sendFailStreak = %d, want 0 after split success", c.sendFailStreak.Load())
+	}
+}
+
+func TestFlush_splitRedistributesAcrossDistributors(t *testing.T) {
+	stub := &stubBroadcaster{
+		multiErr:   errors.New("multi failed"),
+		sendResult: &tx.BroadcastResult{TxHash: "SPLIT"},
+	}
+	c := newTestChain(stub)
+	// Pool with 3 distributors (key indices 1, 2, 3), all healthy by default.
+	c.pool = batch.NewPool(3, 10*time.Second, 100, 500, func(uint32, []batch.Request) {})
+
+	reqs, chs := makeReqs(3)
+	c.makeFlushFn()(1, reqs)
+	collectResults(t, chs)
+
+	if len(stub.allSendReqs) != 3 {
+		t.Fatalf("expected 3 split sends, got %d", len(stub.allSendReqs))
+	}
+	// Each of the 3 healthy distributors should have been used exactly once.
+	seen := map[uint32]int{}
+	for _, r := range stub.allSendReqs {
+		seen[r.KeyIndex]++
+	}
+	for ki := uint32(1); ki <= 3; ki++ {
+		if seen[ki] != 1 {
+			t.Errorf("key index %d used %d times, want 1; distribution = %v", ki, seen[ki], seen)
+		}
 	}
 }
 
