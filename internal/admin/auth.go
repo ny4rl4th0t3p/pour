@@ -2,6 +2,7 @@ package admin
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -48,6 +49,13 @@ func NewTokenStore() (*TokenStore, error) {
 	}
 	slog.Info("admin: generated admin token", "path", TokenFile)
 	return &TokenStore{token: token}, nil
+}
+
+// HMACKey returns a 32-byte key derived from the admin token for use in HMAC signing.
+// The key is stable for the token's lifetime. The raw token is not exposed.
+func (ts *TokenStore) HMACKey() []byte {
+	raw := sha256.Sum256([]byte(ts.token))
+	return raw[:]
 }
 
 // Middleware enforces IP allowlist then Bearer token authentication.
