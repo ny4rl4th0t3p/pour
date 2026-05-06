@@ -191,8 +191,15 @@ func (s *Store) Authenticate(ctx context.Context, rawSecret string) (*Key, error
 		return nil, ErrInvalidSecret
 	}
 	idHex := tail[:secretIDHex]
-	body, err := base64.RawURLEncoding.DecodeString(tail[secretIDHex:])
+	encoded := tail[secretIDHex:]
+	body, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil || len(body) != secretBodyLen {
+		return nil, ErrInvalidSecret
+	}
+	// Reject non-canonical encodings: base64 ignores padding bits in the last
+	// character, so a tampered token with the same significant bits but different
+	// padding bits would otherwise decode to the same body and pass argon2.
+	if base64.RawURLEncoding.EncodeToString(body) != encoded {
 		return nil, ErrInvalidSecret
 	}
 

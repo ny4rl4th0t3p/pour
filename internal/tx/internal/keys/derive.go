@@ -89,8 +89,17 @@ func AddressFromPubKey(pub PubKey, bech32Prefix string) (string, error) {
 	sha256Hash := sha256.Sum256(pub[:])
 	h := ripemd160.New() //nolint:gosec // G406: same as import — protocol requirement
 	h.Write(sha256Hash[:])
-	addrBytes := h.Sum(nil)
+	return AddressFromBytes(h.Sum(nil), bech32Prefix)
+}
 
+// PubKeyAnyTypeURL returns the protobuf Any type URL for a Cosmos secp256k1 public key.
+func PubKeyAnyTypeURL() string {
+	return "/cosmos.crypto.secp256k1.PubKey"
+}
+
+// AddressFromBytes bech32-encodes a raw address hash (20 bytes) with the given prefix.
+// Unlike AddressFromPubKey this skips the SHA256→RIPEMD160 step and encodes the bytes directly.
+func AddressFromBytes(addrBytes []byte, bech32Prefix string) (string, error) {
 	converted, err := bech32ConvertBits(addrBytes, 8, 5, true)
 	if err != nil {
 		return "", fmt.Errorf("keys: %w", err)
@@ -98,9 +107,36 @@ func AddressFromPubKey(pub PubKey, bech32Prefix string) (string, error) {
 	return bech32Encode(bech32Prefix, converted), nil
 }
 
-// PubKeyAnyTypeURL returns the protobuf Any type URL for a Cosmos secp256k1 public key.
-func PubKeyAnyTypeURL() string {
-	return "/cosmos.crypto.secp256k1.PubKey"
+// Bech32Decode decodes a bech32 string and returns the HRP and the decoded data bytes.
+func Bech32Decode(s string) (hrp string, data []byte, err error) {
+	lower := strings.ToLower(strings.TrimSpace(s))
+	sep := strings.LastIndex(lower, "1")
+	if sep < 1 || sep+int(bech32ChecksumLen)+1 > len(lower) {
+		return "", nil, errors.New("bech32: missing separator or too short")
+	}
+	hrp = lower[:sep]
+	encoded := lower[sep+1:]
+
+	decoded := make([]byte, len(encoded))
+	for i, c := range encoded {
+		idx := strings.IndexRune(bech32Charset, c)
+		if idx < 0 {
+			return "", nil, fmt.Errorf("bech32: invalid char %q at position %d", c, i)
+		}
+		decoded[i] = byte(idx) //nolint:gosec // G115: idx is 0–31 (bech32Charset has 32 chars)
+	}
+
+	combined := append(bech32HRPExpand(hrp), decoded...)
+	if bech32Polymod(combined) != 1 {
+		return "", nil, errors.New("bech32: invalid checksum")
+	}
+
+	data5 := decoded[:len(decoded)-int(bech32ChecksumLen)]
+	data, err = bech32ConvertBits(data5, 5, 8, false)
+	if err != nil {
+		return "", nil, err
+	}
+	return hrp, data, nil
 }
 
 // ---- inline bech32 (BIP173) ----

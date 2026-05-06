@@ -67,6 +67,36 @@ func TestAuthenticate_wrongSecret(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_paddingBitTamper(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	_, secret, err := s.Create(ctx, CreateParams{ChainScope: []string{"*"}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// The canonical last char of a 43-char base64url body always has its two least-significant
+	// bits = 00 (only 4 data bits fit; 2 are padding). Incrementing its base64url alphabet index
+	// by 1 changes only those padding bits, so the decoded body bytes are identical. Without the
+	// canonical encoding check this case would silently authenticate — that was the original bug.
+	const b64url = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := secret[len(secret)-1]
+	var charIdx int
+	for i := range b64url {
+		if b64url[i] == last {
+			charIdx = i
+			break
+		}
+	}
+	tampered := secret[:len(secret)-1] + string(b64url[charIdx+1])
+
+	_, err = s.Authenticate(ctx, tampered)
+	if !errors.Is(err, ErrInvalidSecret) {
+		t.Errorf("padding-bit tamper: got %v, want ErrInvalidSecret", err)
+	}
+}
+
 func TestAuthenticate_revokedKey(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
