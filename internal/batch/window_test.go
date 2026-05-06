@@ -107,6 +107,40 @@ func TestWindow_ResultDelivery(t *testing.T) {
 	}
 }
 
+func TestWindow_CapLimitsFlushSize(t *testing.T) {
+	flushSizes := make(chan int, 10)
+	// maxRecipients=2 so each flush takes at most 2 items.
+	w := NewWindow(10*time.Second, 2, 10, func(batch []Request) {
+		flushSizes <- len(batch)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Enqueue 5 items before starting so all are buffered.
+	for range 5 {
+		if err := w.Enqueue(makeRequest("addr")); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+	}
+
+	w.Start(ctx)
+
+	// The cap signal fires when queue ≥ maxRecipients; first flush must be exactly 2.
+	select {
+	case n := <-flushSizes:
+		if n != 2 {
+			t.Errorf("first flush size = %d, want 2", n)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("first flush did not fire within 500ms")
+	}
+
+	// 3 items must remain — they overflow to the next window tick.
+	if d := w.Depth(); d != 3 {
+		t.Errorf("queue depth after first flush = %d, want 3", d)
+	}
+}
+
 func TestWindow_Depth(t *testing.T) {
 	w := NewWindow(10*time.Second, 100, 500, func([]Request) {})
 

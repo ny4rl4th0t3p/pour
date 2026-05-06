@@ -76,6 +76,7 @@ func newChain(
 
 	batchDur, err := cfg.BatchWindowDuration()
 	if err != nil {
+		_ = client.Close()
 		return nil, err
 	}
 
@@ -324,10 +325,19 @@ func (c *Chain) makeFlushFn() func(uint32, []batch.Request) {
 			// Fall through to per-output split.
 		}
 
-		// Split: send one MsgSend per output.
+		// Split: send one MsgSend per output, round-robining across healthy distributors
+		// to avoid sequence contention on a single account (§2.11.3).
+		var healthy []*batch.Distributor
+		if c.pool != nil {
+			healthy = c.pool.Healthy()
+		}
 		for i, r := range reqs {
+			ki := keyIndex
+			if len(healthy) > 0 {
+				ki = healthy[i%len(healthy)].KeyIndex
+			}
 			result, err := c.client.BuildAndBroadcast(ctx, tx.SendRequest{
-				KeyIndex:  keyIndex,
+				KeyIndex:  ki,
 				ToAddress: r.ToAddress,
 				Coins:     r.Coins,
 			})
@@ -336,7 +346,7 @@ func (c *Chain) makeFlushFn() func(uint32, []batch.Request) {
 					c.Suspend(fmt.Errorf("send streak %d: %w", streak, err))
 				}
 				if c.pool != nil {
-					c.pool.MarkRecovering(keyIndex)
+					c.pool.MarkRecovering(ki)
 					observability.DistributorRecoveryTotal.WithLabelValues(c.info.ChainID).Inc()
 				}
 				observability.DripsTotal.WithLabelValues(c.info.ChainID, "failed").Add(float64(len(reqs[i:])))
