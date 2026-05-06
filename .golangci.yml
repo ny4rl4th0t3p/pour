@@ -95,6 +95,8 @@ linters:
         - '10'
         - '100'
         - '1000'
+        - '0x02'    # ASN.1 DER INTEGER tag
+        - '0x30'    # ASN.1 DER SEQUENCE tag
         - '0o600'   # standard file permission: owner read/write
         - '0o700'   # standard file permission: owner rwx
         - '0.025'   # spec §2.14: static default gas price
