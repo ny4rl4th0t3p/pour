@@ -9,11 +9,17 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/cosmos/go-bip39"
+	"github.com/ny4rl4th0t3p/pour/internal/tx"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse"
+	"github.com/ny4rl4th0t3p/pour/internal/abuse/apikey"
+	abusepow "github.com/ny4rl4th0t3p/pour/internal/abuse/pow"
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
+	"github.com/ny4rl4th0t3p/pour/internal/abuse/signed"
 	"github.com/ny4rl4th0t3p/pour/internal/admin"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
@@ -47,6 +53,16 @@ func (*VersionCmd) Run() error {
 // ServeCmd starts the faucet HTTP server.
 type ServeCmd struct {
 	config.ServeConfig
+}
+
+// powAdapter adapts *abusepow.Issuer to handlers.PowIssuer with a fixed difficulty.
+type powAdapter struct {
+	issuer     *abusepow.Issuer
+	difficulty abusepow.Difficulty
+}
+
+func (a *powAdapter) NewChallenge() (string, error) {
+	return a.issuer.NewChallenge(a.difficulty)
 }
 
 func (c *ServeCmd) Run() error {
@@ -83,13 +99,6 @@ func (c *ServeCmd) Run() error {
 	}
 	gc.Start(ctx, lgpFn)
 
-	window, _ := chains.Abuse.IPRateLimit.WindowDuration()
-	rpw := chains.Abuse.IPRateLimit.RequestsPerWindow
-	if rpw == 0 {
-		rpw = ratelimit.DefaultRequestsPerWindow
-	}
-	limiter := ratelimit.New(db, rpw, window)
-
 	refreshInterval, err := chains.Registry.RefreshDuration()
 	if err != nil {
 		return err
@@ -110,15 +119,15 @@ func (c *ServeCmd) Run() error {
 	mgr.StartRefreshLoop(ctx)
 
 	rawClients := mgr.Clients()
-	broadcasters := make(map[string]handlers.Broadcaster, len(rawClients))
-	for id, c := range rawClients {
-		broadcasters[id] = c
-	}
+	broadcasters := buildBroadcasters(rawClients)
 
 	tokenStore, err := admin.NewTokenStore()
 	if err != nil {
 		return err
 	}
+
+	ac := buildAbuseComponents(chains, db, tokenStore.HMACKey(), rawClients, mgr.ListActive(), buildLimiter(chains.Abuse, db))
+
 	adminHandler := admin.New(admin.Deps{
 		RegStore:   mgr.Store(),
 		Manager:    mgr,
@@ -132,7 +141,10 @@ func (c *ServeCmd) Run() error {
 		RefreshInterval: refreshInterval,
 		Serve:           &c.ServeConfig,
 		Store:           db,
-		Limiter:         limiter,
+		Gate:            ac.gate,
+		PowIssuer:       &powAdapter{issuer: ac.powIssuer, difficulty: ac.powDifficulty},
+		NonceIssuer:     ac.nonceStore,
+		AbuseCfg:        chains.Abuse,
 		Broadcasters:    broadcasters,
 		AdminHandler:    adminRouter,
 		Version:         version,
@@ -141,6 +153,68 @@ func (c *ServeCmd) Run() error {
 		return err
 	}
 	return srv.Start(ctx)
+}
+
+// abuseComponents groups the gate and its collaborating issuers so buildAbuseComponents
+// can return them as a unit without a long return list.
+type abuseComponents struct {
+	gate          *abuse.Gate
+	powIssuer     *abusepow.Issuer
+	powDifficulty abusepow.Difficulty
+	nonceStore    *signed.NonceStore
+}
+
+func buildBroadcasters(rawClients map[string]*tx.Client) map[string]handlers.Broadcaster {
+	out := make(map[string]handlers.Broadcaster, len(rawClients))
+	for id, cl := range rawClients {
+		out[id] = cl
+	}
+	return out
+}
+
+func buildLimiter(ab config.AbuseConfig, db *store.Store) *ratelimit.Limiter {
+	window, _ := ab.IPRateLimit.WindowDuration()
+	rpw := ab.IPRateLimit.RequestsPerWindow
+	if rpw == 0 {
+		rpw = ratelimit.DefaultRequestsPerWindow
+	}
+	return ratelimit.New(db, rpw, window)
+}
+
+func buildAbuseComponents(
+	cfg *config.ChainsConfig,
+	db *store.Store,
+	hmacKey []byte,
+	rawClients map[string]*tx.Client,
+	snapshots []chain.ChainSnapshot,
+	limiter *ratelimit.Limiter,
+) abuseComponents {
+	powIssuer := abusepow.New(hmacKey)
+	powDifficulty := abusepow.DifficultyMedium
+	if d := cfg.Abuse.PoW.Difficulty; d != "" {
+		if parsed, parseErr := abusepow.ParseDifficulty(d); parseErr == nil {
+			powDifficulty = parsed
+		}
+	}
+	nonceStore := signed.NewNonceStore(5 * time.Minute)
+	sigVerifier := signed.New()
+	queriers := make(map[string]signed.BalanceQuerier, len(rawClients))
+	for id, cl := range rawClients {
+		queriers[id] = cl
+	}
+	prefixes := make(map[string]string, len(snapshots))
+	for _, snap := range snapshots {
+		prefixes[snap.Info.ChainID] = snap.Info.Bech32Prefix
+	}
+	predicateChecker := signed.NewPredicateChecker(queriers, prefixes)
+	apiKeyStore := apikey.New(db)
+	gate := abuse.New(cfg.Abuse, apiKeyStore, powIssuer, nonceStore, sigVerifier, predicateChecker, limiter)
+	return abuseComponents{
+		gate:          gate,
+		powIssuer:     powIssuer,
+		powDifficulty: powDifficulty,
+		nonceStore:    nonceStore,
+	}
 }
 
 // KeysCmd groups key management subcommands.
@@ -218,30 +292,30 @@ func signedDripRatioHigh(signedCoin, anonCoin string) bool {
 	if signedCoin == "" || anonCoin == "" {
 		return false
 	}
-	signed, errS := config.ParseCoin(signedCoin)
-	anon, errA := config.ParseCoin(anonCoin)
-	if errS != nil || errA != nil || signed.Denom != anon.Denom {
+	s, errS := config.ParseCoin(signedCoin)
+	a, errA := config.ParseCoin(anonCoin)
+	if errS != nil || errA != nil || s.Denom != a.Denom {
 		return false
 	}
-	s, ok1 := new(big.Int).SetString(signed.Amount, 10)
-	a, ok2 := new(big.Int).SetString(anon.Amount, 10)
-	if !ok1 || !ok2 || a.Sign() <= 0 {
+	sv, ok1 := new(big.Int).SetString(s.Amount, 10)
+	av, ok2 := new(big.Int).SetString(a.Amount, 10)
+	if !ok1 || !ok2 || av.Sign() <= 0 {
 		return false
 	}
-	return s.Cmp(new(big.Int).Mul(a, big.NewInt(100))) > 0
+	return sv.Cmp(new(big.Int).Mul(av, big.NewInt(100))) > 0
 }
 
 // lowGasPriceFn builds a gascache.LowGasPriceFn from the loaded config.
 func lowGasPriceFn(cfg *config.ChainsConfig) (gascache.LowGasPriceFn, error) {
 	m := make(map[string]string, len(cfg.Chains))
 	for i := range cfg.Chains {
-		c := &cfg.Chains[i]
-		info, err := c.ToChainInfo()
+		ch := &cfg.Chains[i]
+		info, err := ch.ToChainInfo()
 		if err != nil {
 			return nil, err
 		}
 		if len(info.FeeTokens) > 0 && !info.FeeTokens[0].LowGasPrice.IsZero() {
-			m[c.ChainID] = info.FeeTokens[0].LowGasPrice.String()
+			m[ch.ChainID] = info.FeeTokens[0].LowGasPrice.String()
 		}
 	}
 	return func(chainID string) (string, bool) {
