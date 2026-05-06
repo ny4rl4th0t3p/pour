@@ -26,7 +26,40 @@ type ChainsConfig struct {
 
 // AbuseConfig holds abuse-prevention settings.
 type AbuseConfig struct {
-	IPRateLimit IPRateLimitConfig `koanf:"ip_rate_limit"`
+	PoW                AbusePoWConfig                `koanf:"pow"`
+	APIKeys            AbuseAPIKeysConfig            `koanf:"api_keys"`
+	SignatureChallenge AbuseSignatureChallengeConfig `koanf:"signature_challenge"`
+	IPRateLimit        IPRateLimitConfig             `koanf:"ip_rate_limit"`
+}
+
+// AbusePoWConfig configures the Altcha proof-of-work gate.
+type AbusePoWConfig struct {
+	// Enabled defaults to true when the key is absent from YAML.
+	Enabled bool `koanf:"enabled"`
+	// Difficulty is "easy", "medium", "hard", or a raw positive integer string.
+	// Defaults to "medium".
+	Difficulty string `koanf:"difficulty"`
+}
+
+// AbuseAPIKeysConfig configures the API key authentication mechanism.
+type AbuseAPIKeysConfig struct {
+	// Enabled defaults to true when the key is absent from YAML.
+	Enabled bool `koanf:"enabled"`
+}
+
+// AbuseSignatureChallengeConfig configures the signed-challenge authentication mechanism.
+type AbuseSignatureChallengeConfig struct {
+	// Enabled defaults to false.
+	Enabled bool `koanf:"enabled"`
+	// RequirePredicate is the on-chain predicate verified against the signer's address.
+	// Valid values: "none", "has_balance", "is_validator". Defaults to "none".
+	RequirePredicate string `koanf:"require_predicate"`
+	// PredicateChainID is the chain to query for the predicate check.
+	// Defaults to the chain being dripped when empty.
+	PredicateChainID string `koanf:"predicate_chain_id"`
+	// PredicateMinAmount is the minimum coin amount required for the has_balance predicate.
+	// Must be set when require_predicate is "has_balance".
+	PredicateMinAmount string `koanf:"predicate_min_amount"`
 }
 
 // IPRateLimitConfig holds per-IP rate limit settings.
@@ -219,6 +252,62 @@ type DripConfig struct {
 	Memo                string `koanf:"memo"`
 }
 
+const defaultPredicate = "none"
+
+var (
+	validPoWDifficulties = map[string]bool{"easy": true, "medium": true, "hard": true}
+	validPredicates      = map[string]bool{"none": true, "has_balance": true}
+)
+
+// setAbuseDefaults applies defaults for fields whose zero value (false/"") is ambiguous.
+// Must be called after koanf unmarshal because koanf cannot distinguish absent from false.
+func setAbuseDefaults(k *koanf.Koanf, cfg *AbuseConfig) {
+	if !k.Exists("abuse.pow.enabled") {
+		cfg.PoW.Enabled = true
+	}
+	if cfg.PoW.Difficulty == "" {
+		cfg.PoW.Difficulty = "medium"
+	}
+	if !k.Exists("abuse.api_keys.enabled") {
+		cfg.APIKeys.Enabled = true
+	}
+	if cfg.SignatureChallenge.RequirePredicate == "" {
+		cfg.SignatureChallenge.RequirePredicate = defaultPredicate
+	}
+}
+
+func validateAbuseConfig(cfg *AbuseConfig) error {
+	d := cfg.PoW.Difficulty
+	if !validPoWDifficulties[d] {
+		// Accept raw positive integer strings (e.g. "100000").
+		ok := true
+		for _, ch := range d {
+			if ch < '0' || ch > '9' {
+				ok = false
+				break
+			}
+		}
+		if !ok || d == "" {
+			return fmt.Errorf("config: abuse.pow.difficulty %q: must be easy|medium|hard or a positive integer", d)
+		}
+	}
+	if p := cfg.SignatureChallenge.RequirePredicate; !validPredicates[p] {
+		return fmt.Errorf(
+			"config: abuse.signature_challenge.require_predicate %q: "+
+				"must be one of none|has_balance", p)
+	}
+	if cfg.SignatureChallenge.RequirePredicate == "has_balance" {
+		if cfg.SignatureChallenge.PredicateMinAmount == "" {
+			return fmt.Errorf(
+				"config: abuse.signature_challenge.predicate_min_amount is required when require_predicate is has_balance")
+		}
+		if _, err := ParseCoin(cfg.SignatureChallenge.PredicateMinAmount); err != nil {
+			return fmt.Errorf("config: abuse.signature_challenge.predicate_min_amount: %w", err)
+		}
+	}
+	return nil
+}
+
 // LoadChains parses the chains.yml file at path and validates required fields.
 func LoadChains(path string) (*ChainsConfig, error) {
 	k := koanf.New(".")
@@ -231,6 +320,10 @@ func LoadChains(path string) (*ChainsConfig, error) {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
 	}
 
+	setAbuseDefaults(k, &cfg.Abuse)
+	if err := validateAbuseConfig(&cfg.Abuse); err != nil {
+		return nil, err
+	}
 	if _, err := cfg.Abuse.IPRateLimit.WindowDuration(); err != nil {
 		return nil, err
 	}
