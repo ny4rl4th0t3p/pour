@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"os"
 	"os/signal"
 	"syscall"
@@ -64,6 +65,7 @@ func (c *ServeCmd) Run() error {
 	if err != nil {
 		return err
 	}
+	logAbuseWarnings(chains)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -172,6 +174,61 @@ func main() {
 		kong.UsageOnError(),
 	)
 	ctx.FatalIfErrorf(ctx.Run())
+}
+
+const ipRateLimitWarnThreshold = 10000
+
+// logAbuseWarnings emits slog.Warn messages for operator-visible misconfigurations (§6.8).
+func logAbuseWarnings(cfg *config.ChainsConfig) {
+	ab := cfg.Abuse
+	if !ab.PoW.Enabled && !ab.APIKeys.Enabled && !ab.SignatureChallenge.Enabled {
+		slog.Warn("abuse: all mechanisms disabled — faucet is open to the public with no authentication")
+	}
+	if ab.IPRateLimit.RequestsPerWindow > ipRateLimitWarnThreshold {
+		slog.Warn("abuse: ip_rate_limit.requests_per_window is very high",
+			"value", ab.IPRateLimit.RequestsPerWindow)
+	}
+	predicateChainID := ab.SignatureChallenge.PredicateChainID
+	for i := range cfg.Chains {
+		ch := &cfg.Chains[i]
+		if predicateChainID != "" && ch.ChainID == predicateChainID && ch.IsEnabled() {
+			slog.Warn("abuse: chain used as predicate_chain_id should not be enabled — "+
+				"enabling it opens a drip endpoint with no faucet funds",
+				"chain_id", ch.ChainID)
+		}
+		if !ch.IsEnabled() {
+			continue
+		}
+		if ab.SignatureChallenge.Enabled && ch.Drip.Signed == "" {
+			slog.Warn("abuse: signature_challenge enabled but drip.signed not configured for chain",
+				"chain_id", ch.ChainID)
+		}
+		if signedDripRatioHigh(ch.Drip.Signed, ch.Drip.Anonymous) {
+			slog.Warn("abuse: drip.signed is more than 100x drip.anonymous",
+				"chain_id", ch.ChainID,
+				"signed", ch.Drip.Signed,
+				"anonymous", ch.Drip.Anonymous)
+		}
+	}
+}
+
+// signedDripRatioHigh reports whether the signed drip amount is more than 100× the anonymous
+// drip amount. Returns false when either value is absent, unparseable, or denoms differ.
+func signedDripRatioHigh(signedCoin, anonCoin string) bool {
+	if signedCoin == "" || anonCoin == "" {
+		return false
+	}
+	signed, errS := config.ParseCoin(signedCoin)
+	anon, errA := config.ParseCoin(anonCoin)
+	if errS != nil || errA != nil || signed.Denom != anon.Denom {
+		return false
+	}
+	s, ok1 := new(big.Int).SetString(signed.Amount, 10)
+	a, ok2 := new(big.Int).SetString(anon.Amount, 10)
+	if !ok1 || !ok2 || a.Sign() <= 0 {
+		return false
+	}
+	return s.Cmp(new(big.Int).Mul(a, big.NewInt(100))) > 0
 }
 
 // lowGasPriceFn builds a gascache.LowGasPriceFn from the loaded config.
