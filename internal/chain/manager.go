@@ -213,6 +213,11 @@ func (m *Manager) ChannelsFor(chainName string) []chainregistry.IBCChannel {
 	return m.regStore.ChannelsFor(chainName)
 }
 
+// AllIBCChannels returns every known IBC channel as unique pairs (not per-chain endpoints).
+func (m *Manager) AllIBCChannels() []chainregistry.IBCChannel {
+	return m.regStore.AllIBCChannels()
+}
+
 // Refresh fetches live registry data, applies it to the store, and reconciles
 // active connections. Returns the ChangeSet summarizing what changed.
 // No-op (empty ChangeSet) when there are no registry chains.

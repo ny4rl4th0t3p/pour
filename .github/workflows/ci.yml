@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - '**/*.go'
+      - '!e2e/**'
       - 'go.mod'
       - 'go.sum'
       - 'proto/**'

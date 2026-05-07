@@ -21,4 +21,5 @@ type ChainSource interface {
 	LastFetched() time.Time
 	PendingFrozenCount() int
 	ChannelsFor(chainName string) []chainregistry.IBCChannel
+	AllIBCChannels() []chainregistry.IBCChannel
 }

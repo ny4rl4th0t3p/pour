@@ -99,15 +99,22 @@ func TestInfo_abuseFlags(t *testing.T) {
 }
 
 func TestInfo_IBCChannelCount(t *testing.T) {
+	channel := chainregistry.IBCChannel{
+		ChainNameA: "cosmoshub", ChainNameB: "osmosis",
+		ChannelA: "channel-141", ChannelB: "channel-0",
+		PortA: "transfer", PortB: "transfer",
+		Status: "live", Preferred: true,
+	}
 	src := &stubChainSource{
 		snaps: map[string]chain.ChainSnapshot{
 			"osmosis-1":   {Info: &chainregistry.ChainInfo{ChainID: "osmosis-1", ChainName: "osmosis"}},
 			"cosmoshub-4": {Info: &chainregistry.ChainInfo{ChainID: "cosmoshub-4", ChainName: "cosmoshub"}},
 		},
 		channels: map[string][]chainregistry.IBCChannel{
-			"osmosis":   {{ChainNameA: "cosmoshub", ChainNameB: "osmosis", ChannelA: "channel-141", ChannelB: "channel-0", PortA: "transfer", PortB: "transfer", Status: "live", Preferred: true}},
-			"cosmoshub": {{ChainNameA: "cosmoshub", ChainNameB: "osmosis", ChannelA: "channel-141", ChannelB: "channel-0", PortA: "transfer", PortB: "transfer", Status: "live", Preferred: true}},
+			"osmosis":   {channel},
+			"cosmoshub": {channel},
 		},
+		allChannels: []chainregistry.IBCChannel{channel},
 	}
 	h := New(Deps{Source: src, Version: "test"})
 	w := httptest.NewRecorder()
@@ -118,8 +125,8 @@ func TestInfo_IBCChannelCount(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp.IBCChannelCount != 2 {
-		t.Errorf("ibc_channel_count: got %d, want 2", resp.IBCChannelCount)
+	if resp.IBCChannelCount != 1 {
+		t.Errorf("ibc_channel_count: got %d, want 1", resp.IBCChannelCount)
 	}
 }
 
