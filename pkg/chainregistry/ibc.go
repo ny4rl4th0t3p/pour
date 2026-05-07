@@ -82,17 +82,17 @@ func unmarshalIBCFile(data []byte) ([]IBCChannel, error) {
 // (channel, true) on success or (zero, false) if no live channel exists for
 // the pair. The ambiguous return is true when a live channel was found but
 // none is marked preferred — the caller should log a warning.
-func SelectChannel(channels []IBCChannel, from, to string) (ch IBCChannel, ok bool, ambiguous bool) {
+func SelectChannel(channels []IBCChannel, from, to string) (ch IBCChannel, ok, ambiguous bool) {
 	var live []IBCChannel
-	for _, c := range channels {
-		_, _, peer, match := c.ChannelFor(from)
-		if !match || peer != to || c.Status != "live" {
+	for i := range channels {
+		_, _, peer, match := channels[i].ChannelFor(from)
+		if !match || peer != to || channels[i].Status != "live" {
 			continue
 		}
-		if c.Preferred {
-			return c, true, false
+		if channels[i].Preferred {
+			return channels[i], true, false
 		}
-		live = append(live, c)
+		live = append(live, channels[i])
 	}
 	if len(live) == 0 {
 		return IBCChannel{}, false, false

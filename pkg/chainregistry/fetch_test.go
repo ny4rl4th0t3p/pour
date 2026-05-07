@@ -116,7 +116,7 @@ func ibcJSON(nameA, chanA, nameB, chanB string) []byte {
 func TestFetchIBCChannels_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/_IBC/test-alpha-test-beta.json" {
-			w.Write(ibcJSON("test-alpha", "channel-0", "test-beta", "channel-1")) //nolint:errcheck
+			w.Write(ibcJSON("test-alpha", "channel-0", "test-beta", "channel-1")) //nolint:errcheck // test response write
 			return
 		}
 		http.NotFound(w, r)
@@ -165,11 +165,11 @@ func TestFetchLive_PopulatesIBCChannels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/test-alpha/chain.json":
-			w.Write(chainJSON("test-alpha-1", "test-alpha", "alpha")) //nolint:errcheck
+			w.Write(chainJSON("test-alpha-1", "test-alpha", "alpha")) //nolint:errcheck // test response write
 		case "/test-beta/chain.json":
-			w.Write(chainJSON("test-beta-1", "test-beta", "beta")) //nolint:errcheck
+			w.Write(chainJSON("test-beta-1", "test-beta", "beta")) //nolint:errcheck // test response write
 		case "/_IBC/test-alpha-test-beta.json":
-			w.Write(ibcJSON("test-alpha", "channel-0", "test-beta", "channel-1")) //nolint:errcheck
+			w.Write(ibcJSON("test-alpha", "channel-0", "test-beta", "channel-1")) //nolint:errcheck // test response write
 		default:
 			http.NotFound(w, r)
 		}
