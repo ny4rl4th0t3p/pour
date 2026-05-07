@@ -148,7 +148,7 @@ func chainNamePairs(chainIDs []string) [][2]string {
 		names[i] = ChainNameFromID(id)
 	}
 	var pairs [][2]string
-	for i := range len(names) {
+	for i := range names {
 		for j := i + 1; j < len(names); j++ {
 			pairs = append(pairs, [2]string{names[i], names[j]})
 		}
