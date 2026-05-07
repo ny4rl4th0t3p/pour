@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -872,5 +873,41 @@ func TestParseCoin(t *testing.T) {
 				t.Errorf("ParseCoin(%q) = %+v, want %+v", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIBCDefaults_omitted(t *testing.T) {
+	cfg, err := LoadChains(writeTemp(t, validYAML))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if got := cfg.Chains[0].IBC.Timeout; got != "10m" {
+		t.Errorf("IBC.Timeout: got %q, want 10m when omitted", got)
+	}
+}
+
+func TestIBCDefaults_explicit(t *testing.T) {
+	yml := validYAML + `    ibc:
+      timeout: "5m"
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if got := cfg.Chains[0].IBC.Timeout; got != "5m" {
+		t.Errorf("IBC.Timeout: got %q, want 5m", got)
+	}
+}
+
+func TestIBCDefaults_zeroError(t *testing.T) {
+	yml := validYAML + `    ibc:
+      timeout: "0"
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("LoadChains: expected error for ibc.timeout 0, got nil")
+	}
+	if got := err.Error(); !strings.Contains(got, "ibc.timeout") {
+		t.Errorf("error %q: want it to mention ibc.timeout", got)
 	}
 }
