@@ -41,6 +41,10 @@ func (s *stubBroadcaster) BuildAndBroadcastMulti(_ context.Context, _ tx.BatchSe
 	return s.multiResult, s.multiErr
 }
 
+func (*stubBroadcaster) BuildAndBroadcastTransfer(_ context.Context, _ tx.TransferRequest) (tx.TransferResult, error) {
+	return tx.TransferResult{}, nil
+}
+
 func (s *stubBroadcaster) QueryBalance(_ context.Context, _, _ string) (tx.Coin, error) {
 	return s.balanceResult, s.balanceErr
 }
@@ -379,6 +383,10 @@ func (b *countingBroadcaster) BuildAndBroadcastMulti(_ context.Context, _ tx.Bat
 		return b.multiResults[i], b.multiErrors[i]
 	}
 	return nil, errors.New("unexpected extra call")
+}
+
+func (*countingBroadcaster) BuildAndBroadcastTransfer(_ context.Context, _ tx.TransferRequest) (tx.TransferResult, error) {
+	return tx.TransferResult{}, nil
 }
 
 func (*countingBroadcaster) QueryBalance(_ context.Context, _, _ string) (tx.Coin, error) {

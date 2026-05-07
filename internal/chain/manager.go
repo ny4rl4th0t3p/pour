@@ -162,7 +162,7 @@ func (m *Manager) GetActive(chainID string) (ChainSnapshot, bool) {
 	if c == nil {
 		return ChainSnapshot{}, false
 	}
-	return ChainSnapshot{Info: c.Info(), Drip: c.Drip(), IBCTimeout: c.IBCTimeout()}, true
+	return ChainSnapshot{Info: c.Info(), Drip: c.Drip(), IBCTimeout: c.IBCTimeout(), IBCSourceChainID: c.IBCSourceChainID()}, true
 }
 
 // ListActive returns snapshots of all active chains, sorted by chain ID.
@@ -170,7 +170,7 @@ func (m *Manager) ListActive() []ChainSnapshot {
 	m.mu.RLock()
 	out := make([]ChainSnapshot, 0, len(m.chains))
 	for _, c := range m.chains {
-		out = append(out, ChainSnapshot{Info: c.Info(), Drip: c.Drip(), IBCTimeout: c.IBCTimeout()})
+		out = append(out, ChainSnapshot{Info: c.Info(), Drip: c.Drip(), IBCTimeout: c.IBCTimeout(), IBCSourceChainID: c.IBCSourceChainID()})
 	}
 	m.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool {
@@ -216,6 +216,20 @@ func (m *Manager) ChannelsFor(chainName string) []chainregistry.IBCChannel {
 // AllIBCChannels returns every known IBC channel as unique pairs (not per-chain endpoints).
 func (m *Manager) AllIBCChannels() []chainregistry.IBCChannel {
 	return m.regStore.AllIBCChannels()
+}
+
+// IBCTransfer dispatches a MsgTransfer through the named source chain's tx client.
+func (m *Manager) IBCTransfer(ctx context.Context, sourceChainID string, req tx.TransferRequest) (tx.TransferResult, error) {
+	m.mu.RLock()
+	src := m.chains[sourceChainID]
+	m.mu.RUnlock()
+	if src == nil {
+		return tx.TransferResult{}, fmt.Errorf("chain %q not active", sourceChainID)
+	}
+	if src.client == nil {
+		return tx.TransferResult{}, fmt.Errorf("chain %q has no tx client", sourceChainID)
+	}
+	return src.client.BuildAndBroadcastTransfer(ctx, req)
 }
 
 // Refresh fetches live registry data, applies it to the store, and reconciles

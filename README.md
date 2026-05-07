@@ -239,6 +239,28 @@ DELETE /admin/api-keys/{id}               revoke a key immediately
 POST /admin/api-keys/rotate-admin          rotate the admin bearer token; old token rejected immediately
 ```
 
+**`GET /v1/chains/{chain_id}`** includes an `ibc_channels` array — one entry per live ICS-20
+channel the chain has with other configured chains:
+
+```json
+{
+  "chain_id": "osmosis-1",
+  "ibc_channels": [
+    {
+      "peer_chain_name": "cosmoshub",
+      "channel_id": "channel-0",
+      "peer_channel_id": "channel-141",
+      "port_id": "transfer",
+      "status": "live",
+      "preferred": true
+    }
+  ]
+}
+```
+
+**`GET /v1/info`** includes `ibc_channel_count` — the number of unique live channel pairs across
+all configured chains.
+
 **Drip request:**
 
 ```sh
@@ -304,7 +326,7 @@ pour chains refresh            trigger an immediate registry re-fetch
 - [x] **v0.2.0** — chain registry integration, multi-chain runtime, admin API
 - [x] **v0.3.0** — batch window, multiple distributor wallets, gRPC endpoint failover
 - [x] **v0.4.0** — PoW challenge, API keys, signed-wallet authentication
-- [ ] **v0.5.0** — IBC plumbing
+- [x] **v0.5.0** — IBC plumbing
 - [ ] **v0.6.0** — IBC drips
 - [ ] **v0.7.0** — devnet tooling and local testing helpers
 - [ ] **v1.0.0** — stable: API and config schema frozen under semver guarantees
