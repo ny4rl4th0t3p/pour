@@ -39,7 +39,7 @@ func buildSolution(t *testing.T, challengeJSON string) string {
 }
 
 func TestRoundTrip(t *testing.T) {
-	issuer := New(testKey)
+	issuer := New(func() []byte { return testKey })
 	challengeJSON, err := issuer.NewChallenge(DifficultyEasy)
 	if err != nil {
 		t.Fatalf("NewChallenge: %v", err)
@@ -59,7 +59,7 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestVerify_tampered(t *testing.T) {
-	issuer := New(testKey)
+	issuer := New(func() []byte { return testKey })
 	challengeJSON, err := issuer.NewChallenge(DifficultyEasy)
 	if err != nil {
 		t.Fatalf("NewChallenge: %v", err)
@@ -81,14 +81,14 @@ func TestVerify_tampered(t *testing.T) {
 }
 
 func TestVerify_wrongKey(t *testing.T) {
-	issuer := New(testKey)
+	issuer := New(func() []byte { return testKey })
 	challengeJSON, err := issuer.NewChallenge(DifficultyEasy)
 	if err != nil {
 		t.Fatalf("NewChallenge: %v", err)
 	}
 	solution := buildSolution(t, challengeJSON)
 
-	other := New([]byte("different-key"))
+	other := New(func() []byte { return []byte("different-key") })
 	ok, _ := other.Verify(challengeJSON, solution)
 	if ok {
 		t.Error("solution signed with different key should not verify")
@@ -131,7 +131,7 @@ func TestParseDifficulty(t *testing.T) {
 }
 
 func TestNewChallenge_containsExpectedFields(t *testing.T) {
-	issuer := New(testKey)
+	issuer := New(func() []byte { return testKey })
 	challengeJSON, err := issuer.NewChallenge(DifficultyMedium)
 	if err != nil {
 		t.Fatalf("NewChallenge: %v", err)

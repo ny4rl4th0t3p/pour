@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
@@ -24,26 +25,31 @@ const (
 var defaultAllowedCIDRs = []string{"127.0.0.1/32", "::1/128"}
 
 // TokenStore holds the admin bearer token, loaded or generated at startup.
+// The token may be rotated at runtime via Rotate; all methods are safe for concurrent use.
 type TokenStore struct {
+	mu    sync.RWMutex
 	token string
 }
 
 // NewTokenStore resolves the admin token in priority order:
-// POUR_ADMIN_TOKEN env → .pour-admin-token file → generate + write new token.
+// .pour-admin-token file → POUR_ADMIN_TOKEN env → generate + write new token.
+//
+// The file takes precedence over the env var so that token rotations (which write
+// a new file) survive process restarts without the env var winning back. To revert
+// to an env-var-managed token, delete the file explicitly.
 func NewTokenStore() (*TokenStore, error) {
-	if t := os.Getenv(TokenEnvVar); t != "" {
-		return &TokenStore{token: t}, nil
-	}
 	if data, err := os.ReadFile(TokenFile); err == nil {
 		return &TokenStore{token: strings.TrimSpace(string(data))}, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("admin: read token file: %w", err)
 	}
-	buf := make([]byte, tokenBytes)
-	if _, err := rand.Read(buf); err != nil {
-		return nil, fmt.Errorf("admin: generate token: %w", err)
+	if t := os.Getenv(TokenEnvVar); t != "" {
+		return &TokenStore{token: t}, nil
 	}
-	token := tokenPrefix + base64.RawURLEncoding.EncodeToString(buf)
+	token, err := generateToken()
+	if err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(TokenFile, []byte(token+"\n"), 0o600); err != nil {
 		return nil, fmt.Errorf("admin: write token file: %w", err)
 	}
@@ -51,11 +57,44 @@ func NewTokenStore() (*TokenStore, error) {
 	return &TokenStore{token: token}, nil
 }
 
+// Token returns the current admin bearer token.
+func (ts *TokenStore) Token() string {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.token
+}
+
 // HMACKey returns a 32-byte key derived from the admin token for use in HMAC signing.
-// The key is stable for the token's lifetime. The raw token is not exposed.
+// The raw token is not exposed.
 func (ts *TokenStore) HMACKey() []byte {
-	raw := sha256.Sum256([]byte(ts.token))
+	raw := sha256.Sum256([]byte(ts.Token()))
 	return raw[:]
+}
+
+// Rotate generates a new admin token, overwrites TokenFile, and replaces the in-memory
+// token atomically. Returns the new token (shown once; caller must log or return it).
+// After rotation, the file takes priority over POUR_ADMIN_TOKEN on the next restart.
+func (ts *TokenStore) Rotate() (string, error) {
+	newToken, err := generateToken()
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(TokenFile, []byte(newToken+"\n"), 0o600); err != nil {
+		return "", fmt.Errorf("admin: write token file: %w", err)
+	}
+	ts.mu.Lock()
+	ts.token = newToken
+	ts.mu.Unlock()
+	return newToken, nil
+}
+
+// generateToken produces a new cryptographically random admin bearer token.
+func generateToken() (string, error) {
+	buf := make([]byte, tokenBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("admin: generate token: %w", err)
+	}
+	return tokenPrefix + base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 // Middleware enforces IP allowlist then Bearer token authentication.
@@ -73,7 +112,7 @@ func Middleware(ts *TokenStore, allowedCIDRs []string) func(http.Handler) http.H
 				return
 			}
 			bearer := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if bearer == "" || bearer != ts.token {
+			if bearer == "" || bearer != ts.Token() {
 				writeError(w, http.StatusUnauthorized, "invalid or missing token")
 				return
 			}

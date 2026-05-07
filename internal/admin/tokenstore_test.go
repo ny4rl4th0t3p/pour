@@ -7,6 +7,17 @@ import (
 )
 
 func TestNewTokenStore_envVar(t *testing.T) {
+	// Chdir to a temp dir so no existing token file can take precedence.
+	dir := t.TempDir()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
 	t.Setenv(TokenEnvVar, "token-from-env")
 	ts, err := NewTokenStore()
 	if err != nil {

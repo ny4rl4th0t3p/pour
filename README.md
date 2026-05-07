@@ -40,8 +40,10 @@ pour serve
 
 Fund the address derived from `POUR_MNEMONIC` on each chain before starting.
 
-On first start, an admin token is auto-generated and written to `.pour-admin-token`. Set `POUR_ADMIN_TOKEN` to supply
-your own.
+The admin token resolves in order: `.pour-admin-token` file → `POUR_ADMIN_TOKEN` env var → auto-generate and write to
+`.pour-admin-token`. On a fresh start with neither set, the generated token is logged and written to `.pour-admin-token`
+— read it with `cat .pour-admin-token`. Once the file exists it takes precedence over the env var, so rotations survive
+restarts without the env var winning back. To revert to an env-var-managed token, delete the file.
 
 ## Configuration
 
@@ -191,7 +193,7 @@ curl -X POST http://localhost:8080/v1/pour \
 | Variable           | Default                 | Description                                                                 |
 |--------------------|-------------------------|-----------------------------------------------------------------------------|
 | `POUR_MNEMONIC`    | —                       | **Required.** BIP39 mnemonic for the faucet wallet.                         |
-| `POUR_ADMIN_TOKEN` | *(auto-generated)*      | Admin API bearer token. Auto-written to `.pour-admin-token` on first start. |
+| `POUR_ADMIN_TOKEN` | *(auto-generated)*      | Admin API bearer token. Used only if no `.pour-admin-token` file exists; see token priority above. |
 | `POUR_CONFIG`      | `chains.yml`            | Path to the chains config file.                                             |
 | `POUR_LISTEN`      | `:8080`                 | Address to listen on.                                                       |
 | `POUR_DB_PATH`     | `pour.db`               | Path to the SQLite database.                                                |
@@ -226,6 +228,11 @@ POST /admin/chains/{chain}/gas-cache/reset clear learned gas; forces cold-start 
 
 GET  /admin/chains/{chain}/status          chain operational state (suspended, multisend_disabled, …)
 POST /admin/chains/{chain}/resume          clear suspension; chain resumes accepting pours
+
+POST /admin/api-keys                       issue a new API key (secret returned once)
+GET  /admin/api-keys                       list active keys (no secrets)
+DELETE /admin/api-keys/{id}               revoke a key immediately
+POST /admin/api-keys/rotate-admin          rotate the admin bearer token; old token rejected immediately
 ```
 
 **Drip request:**

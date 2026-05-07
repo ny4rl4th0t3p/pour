@@ -22,15 +22,17 @@ const (
 )
 
 // Issuer creates and verifies stateless Altcha PoW challenges signed with an HMAC key.
+// The key is fetched on every operation so that admin token rotations take effect
+// immediately without a server restart.
 type Issuer struct {
-	hmacKey string
+	hmacKeyFn func() []byte
 }
 
-// New creates an Issuer using hmacKey for HMAC signing. The key should be
-// derived from a stable secret (e.g. HKDF from the admin token) so challenges
-// survive process restarts.
-func New(hmacKey []byte) *Issuer {
-	return &Issuer{hmacKey: string(hmacKey)}
+// New creates an Issuer. hmacKeyFn is called on every challenge creation and
+// verification, so rotating the admin token immediately invalidates outstanding
+// challenges and signs new ones with the updated key.
+func New(hmacKeyFn func() []byte) *Issuer {
+	return &Issuer{hmacKeyFn: hmacKeyFn}
 }
 
 // NewChallenge issues a new Altcha challenge and returns it as a JSON string.
@@ -38,7 +40,7 @@ func New(hmacKey []byte) *Issuer {
 func (i *Issuer) NewChallenge(d Difficulty) (string, error) {
 	expires := time.Now().Add(challengeTTL)
 	ch, err := altcha.CreateChallenge(altcha.ChallengeOptions{
-		HMACKey:   i.hmacKey,
+		HMACKey:   string(i.hmacKeyFn()),
 		MaxNumber: int64(d),
 		Algorithm: altcha.SHA256,
 		Expires:   &expires,
@@ -58,7 +60,7 @@ func (i *Issuer) NewChallenge(d Difficulty) (string, error) {
 // challenge is validated via the HMAC embedded in solution; passing it here
 // makes the call site self-documenting and allows future binding checks.
 func (i *Issuer) Verify(_, solution string) (bool, error) {
-	ok, err := altcha.VerifySolutionSafe(solution, i.hmacKey, true)
+	ok, err := altcha.VerifySolutionSafe(solution, string(i.hmacKeyFn()), true)
 	if err != nil {
 		return false, fmt.Errorf("pow: verify: %w", err)
 	}

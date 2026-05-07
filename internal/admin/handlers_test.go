@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse/apikey"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
@@ -620,5 +621,147 @@ func TestHandler_chainResume_success(t *testing.T) {
 	}
 	if c.ChainStatus().Suspended {
 		t.Error("chain should no longer be suspended after resume")
+	}
+}
+
+// ----- API key handler tests -----
+
+// newAPIKeyStore opens a fresh SQLite DB and returns a ready *apikey.Store.
+func newAPIKeyStore(t *testing.T) *apikey.Store {
+	t.Helper()
+	s, err := store.New(t.Context(), filepath.Join(t.TempDir(), "keys.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return apikey.New(s)
+}
+
+// newAdminSetupWithKeys returns a Handler wired with a real apikey.Store and a
+// fixed TokenStore so API-key endpoints and rotate-admin can be tested.
+func newAdminSetupWithKeys(t *testing.T) (*Handler, *TokenStore) {
+	t.Helper()
+	ks := newAPIKeyStore(t)
+	ts := &TokenStore{token: "secret"}
+	regStore, err := chainregistry.New(chainregistry.Options{})
+	if err != nil {
+		t.Fatalf("chainregistry.New: %v", err)
+	}
+	h := New(Deps{RegStore: regStore, APIKeyStore: ks, TokenStore: ts})
+	return h, ts
+}
+
+func TestAPIKey_create_missingScope(t *testing.T) {
+	h, _ := newAdminSetupWithKeys(t)
+	w := serve(h, http.MethodPost, "/api-keys", `{"label":"ci"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("missing chain_scope: got %d, want 400", w.Code)
+	}
+}
+
+func TestAPIKey_create_badBody(t *testing.T) {
+	h, _ := newAdminSetupWithKeys(t)
+	w := serve(h, http.MethodPost, "/api-keys", "not json")
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("bad body: got %d, want 400", w.Code)
+	}
+}
+
+func TestAPIKey_lifecycle(t *testing.T) {
+	h, _ := newAdminSetupWithKeys(t)
+
+	// Create a key.
+	w := serve(h, http.MethodPost, "/api-keys", `{"label":"ci","chain_scope":["osmosis-1"]}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: got %d, want 201 (body: %s)", w.Code, w.Body.String())
+	}
+	var created createKeyResponse
+	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created.ID == "" {
+		t.Error("create: id is empty")
+	}
+	if created.Secret == "" {
+		t.Error("create: secret is empty")
+	}
+	if !strings.HasPrefix(created.Secret, "pour_key_") {
+		t.Errorf("create: secret %q does not have pour_key_ prefix", created.Secret)
+	}
+
+	// List — should see 1 key, no secret field.
+	w = serve(h, http.MethodGet, "/api-keys", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var listResp struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&listResp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listResp.Keys) != 1 {
+		t.Fatalf("list: expected 1 key, got %d", len(listResp.Keys))
+	}
+	if _, hasSecret := listResp.Keys[0]["secret"]; hasSecret {
+		t.Error("list: secret field must not appear in list response")
+	}
+
+	// Revoke.
+	w = serve(h, http.MethodDelete, "/api-keys/"+created.ID, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("revoke: got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+
+	// List again — should be empty.
+	w = serve(h, http.MethodGet, "/api-keys", "")
+	if err := json.NewDecoder(w.Body).Decode(&listResp); err != nil {
+		t.Fatalf("decode list after revoke: %v", err)
+	}
+	if len(listResp.Keys) != 0 {
+		t.Errorf("list after revoke: expected 0 keys, got %d", len(listResp.Keys))
+	}
+}
+
+func TestAPIKey_revoke_notFound(t *testing.T) {
+	h, _ := newAdminSetupWithKeys(t)
+	w := serve(h, http.MethodDelete, "/api-keys/key_notexist", "")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("revoke not found: got %d, want 404", w.Code)
+	}
+}
+
+func TestAPIKey_rotateAdmin(t *testing.T) {
+	// Rotate writes to TokenFile, so run in a temp dir.
+	dir := t.TempDir()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	h, ts := newAdminSetupWithKeys(t)
+	oldToken := ts.Token()
+
+	w := serve(h, http.MethodPost, "/api-keys/rotate-admin", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("rotate-admin: got %d, want 200 (body: %s)", w.Code, w.Body.String())
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode rotate-admin response: %v", err)
+	}
+	newToken := resp["token"]
+	if newToken == "" {
+		t.Fatal("rotate-admin: token is empty in response")
+	}
+	if newToken == oldToken {
+		t.Error("rotate-admin: new token must differ from old token")
+	}
+	if ts.Token() != newToken {
+		t.Error("rotate-admin: in-memory token not updated")
 	}
 }
