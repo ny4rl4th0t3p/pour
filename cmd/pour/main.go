@@ -126,13 +126,15 @@ func (c *ServeCmd) Run() error {
 		return err
 	}
 
-	ac := buildAbuseComponents(chains, db, tokenStore.HMACKey(), rawClients, mgr.ListActive(), buildLimiter(chains.Abuse, db))
+	ac := buildAbuseComponents(chains, db, tokenStore.HMACKey, rawClients, mgr.ListActive(), buildLimiter(chains.Abuse, db))
 
 	adminHandler := admin.New(admin.Deps{
-		RegStore:   mgr.Store(),
-		Manager:    mgr,
-		GasCache:   gc,
-		ConfigPath: c.ConfigFile,
+		RegStore:    mgr.Store(),
+		Manager:     mgr,
+		GasCache:    gc,
+		ConfigPath:  c.ConfigFile,
+		APIKeyStore: ac.apiKeyStore,
+		TokenStore:  tokenStore,
 	})
 	adminRouter := admin.Middleware(tokenStore, chains.Admin.AllowedCIDRs)(adminHandler.Router())
 
@@ -162,6 +164,7 @@ type abuseComponents struct {
 	powIssuer     *abusepow.Issuer
 	powDifficulty abusepow.Difficulty
 	nonceStore    *signed.NonceStore
+	apiKeyStore   *apikey.Store
 }
 
 func buildBroadcasters(rawClients map[string]*tx.Client) map[string]handlers.Broadcaster {
@@ -184,12 +187,12 @@ func buildLimiter(ab config.AbuseConfig, db *store.Store) *ratelimit.Limiter {
 func buildAbuseComponents(
 	cfg *config.ChainsConfig,
 	db *store.Store,
-	hmacKey []byte,
+	hmacKeyFn func() []byte,
 	rawClients map[string]*tx.Client,
 	snapshots []chain.ChainSnapshot,
 	limiter *ratelimit.Limiter,
 ) abuseComponents {
-	powIssuer := abusepow.New(hmacKey)
+	powIssuer := abusepow.New(hmacKeyFn)
 	powDifficulty := abusepow.DifficultyMedium
 	if d := cfg.Abuse.PoW.Difficulty; d != "" {
 		if parsed, parseErr := abusepow.ParseDifficulty(d); parseErr == nil {
@@ -214,6 +217,7 @@ func buildAbuseComponents(
 		powIssuer:     powIssuer,
 		powDifficulty: powDifficulty,
 		nonceStore:    nonceStore,
+		apiKeyStore:   apiKeyStore,
 	}
 }
 
