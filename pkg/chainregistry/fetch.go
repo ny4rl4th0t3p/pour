@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"time"
@@ -29,6 +30,10 @@ type FetchOptions struct {
 	// Timeout bounds the entire fetch (all chains). Zero means no added timeout
 	// beyond any deadline already on ctx.
 	Timeout time.Duration
+
+	// Logger is used to log non-fatal IBC channel fetch errors. Defaults to
+	// slog.Default() when nil.
+	Logger *slog.Logger
 }
 
 var trailingNumericSuffix = regexp.MustCompile(`-\d+$`)
@@ -42,14 +47,18 @@ func ChainNameFromID(chainID string) string {
 
 // FetchLive fetches chain.json from the registry for each chain ID in
 // opts.ChainIDs, running all requests concurrently. Returns an error if any
-// single fetch fails; the caller should treat this as fatal on startup and
-// non-fatal on refresh.
+// single chain fetch fails; the caller should treat this as fatal on startup
+// and non-fatal on refresh. IBC channel fetch errors are non-fatal and are
+// logged at Warn level.
 func FetchLive(ctx context.Context, opts FetchOptions) (*Snapshot, error) {
 	if opts.BaseURL == "" {
 		opts.BaseURL = defaultRegistryBaseURL
 	}
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = http.DefaultClient
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
 	}
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -84,7 +93,93 @@ func FetchLive(ctx context.Context, opts FetchOptions) (*Snapshot, error) {
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
-	return &Snapshot{Chains: chains}, nil
+
+	// Fetch IBC channel data for all pairs of configured chains. Non-fatal.
+	ibcChannels, ibcErrs := FetchIBCChannels(ctx, opts.BaseURL, chainNamePairs(opts.ChainIDs), opts.HTTPClient)
+	for _, err := range ibcErrs {
+		opts.Logger.Warn("ibc channel fetch error (non-fatal)", "error", err)
+	}
+
+	return &Snapshot{Chains: chains, IBCChannels: ibcChannels}, nil
+}
+
+// FetchIBCChannels fetches _IBC/ channel files for each pair of chain names.
+// 404 responses are silently skipped — they indicate no channel between that
+// pair. Other errors are collected and returned alongside any successfully
+// parsed channels.
+func FetchIBCChannels(ctx context.Context, baseURL string, pairs [][2]string, httpClient *http.Client) ([]IBCChannel, []error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	type result struct {
+		channels []IBCChannel
+		err      error
+	}
+
+	ch := make(chan result, len(pairs))
+	for _, pair := range pairs {
+		go func(a, b string) {
+			channels, err := fetchIBCPair(ctx, httpClient, baseURL, a, b)
+			ch <- result{channels: channels, err: err}
+		}(pair[0], pair[1])
+	}
+
+	var (
+		all      []IBCChannel
+		fetchErr []error
+	)
+	for range pairs {
+		r := <-ch
+		if r.err != nil {
+			fetchErr = append(fetchErr, r.err)
+			continue
+		}
+		all = append(all, r.channels...)
+	}
+	return all, fetchErr
+}
+
+// chainNamePairs returns all unique pairs of chain names derived from the
+// given chain IDs. With n IDs there are n*(n-1)/2 pairs.
+func chainNamePairs(chainIDs []string) [][2]string {
+	names := make([]string, len(chainIDs))
+	for i, id := range chainIDs {
+		names[i] = ChainNameFromID(id)
+	}
+	var pairs [][2]string
+	for i := 0; i < len(names); i++ {
+		for j := i + 1; j < len(names); j++ {
+			pairs = append(pairs, [2]string{names[i], names[j]})
+		}
+	}
+	return pairs
+}
+
+func fetchIBCPair(ctx context.Context, client *http.Client, baseURL, nameA, nameB string) ([]IBCChannel, error) {
+	url := baseURL + "/_IBC/" + ibcPairFilename(nameA, nameB)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("chainregistry: build ibc request for %s-%s: %w", nameA, nameB, err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("chainregistry: fetch ibc %s-%s: %w", nameA, nameB, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // no channel between this pair — not an error
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("chainregistry: fetch ibc %s-%s: unexpected status %d", nameA, nameB, resp.StatusCode)
+	}
+
+	var raw rawIBCFile
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("chainregistry: decode ibc %s-%s: %w", nameA, nameB, err)
+	}
+	return parseIBCFile(raw), nil
 }
 
 func fetchChain(ctx context.Context, client *http.Client, baseURL, chainID string) (rawChainInfo, error) {
