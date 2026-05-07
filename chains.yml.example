@@ -43,3 +43,7 @@ chains:
     max_recipients_per_batch: 25  # outputs per MsgMultiSend; default 25
     # max_queue_depth: 500          # per-distributor queue cap; default 500
     # refill_threshold: ""          # min distributor balance; empty = drip.anonymous × distributors × 10
+
+    ## IBC — optional; controls MsgTransfer timeout for outbound IBC transfers
+    # ibc:
+    #   timeout: 10m     # MsgTransfer timeout; default 10m; increase for slow relayers

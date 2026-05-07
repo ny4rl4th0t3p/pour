@@ -158,6 +158,13 @@ type ChainConfig struct {
 	MaxQueueDepth         int    `koanf:"max_queue_depth"`
 	RefillThreshold       string `koanf:"refill_threshold"`
 	RefillInterval        string `koanf:"refill_interval"`
+
+	IBC IBCConfig `koanf:"ibc"`
+}
+
+// IBCConfig holds per-chain IBC transfer settings.
+type IBCConfig struct {
+	Timeout string `koanf:"timeout"` // Go duration string, e.g. "10m"; default 10m
 }
 
 // IsEnabled reports whether the chain is explicitly enabled.
@@ -259,6 +266,12 @@ var (
 	validPredicates      = map[string]bool{"none": true, "has_balance": true}
 )
 
+func setIBCDefaults(cfg *IBCConfig) {
+	if cfg.Timeout == "" {
+		cfg.Timeout = "10m"
+	}
+}
+
 // setAbuseDefaults applies defaults for fields whose zero value ("") is ambiguous.
 func setAbuseDefaults(cfg *AbuseConfig) {
 	if cfg.PoW.Difficulty == "" {
@@ -330,6 +343,7 @@ func LoadChains(path string) (*ChainsConfig, error) {
 	}
 
 	for i := range cfg.Chains {
+		setIBCDefaults(&cfg.Chains[i].IBC)
 		if err := validateChain(i, &cfg.Chains[i]); err != nil {
 			return nil, err
 		}
@@ -349,6 +363,15 @@ func validateChain(i int, chain *ChainConfig) error {
 		}
 		if d <= 0 {
 			return fmt.Errorf("config: chain %q: block_time %q: must be positive", chain.ChainID, *chain.BlockTime)
+		}
+	}
+	{
+		d, err := time.ParseDuration(chain.IBC.Timeout)
+		if err != nil {
+			return fmt.Errorf("config: chain %q: ibc.timeout %q: %w", chain.ChainID, chain.IBC.Timeout, err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("config: chain %q: ibc.timeout %q: must be positive", chain.ChainID, chain.IBC.Timeout)
 		}
 	}
 	if err := validateConcurrencyFields(chain); err != nil {
