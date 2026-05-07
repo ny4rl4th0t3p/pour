@@ -91,6 +91,10 @@ func (s *stubChainSource) AllIBCChannels() []chainregistry.IBCChannel {
 	return s.allChannels
 }
 
+func (*stubChainSource) IBCTransfer(_ context.Context, _ string, _ tx.TransferRequest) (tx.TransferResult, error) {
+	return tx.TransferResult{}, nil
+}
+
 // ----- helpers -----
 
 var testSource = &stubChainSource{
