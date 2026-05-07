@@ -99,6 +99,10 @@ chains:
     # refill_threshold: ""          # min distributor balance before holder refills it
     #                               # default: drip.anonymous × distributors × 10
 
+    # IBC — optional.
+    # ibc:
+    #   timeout: 10m               # MsgTransfer timeout; default 10m; increase for slow relayers
+
   # Standalone chain: not in the public registry — all fields must be provided.
   - chain_id: mynet-1
     standalone: true
