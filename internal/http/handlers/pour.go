@@ -18,6 +18,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
+	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
@@ -53,6 +54,11 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 	decision, err := h.gate.Admit(r.Context(), r, &req, cc)
 	if err != nil {
 		h.handleAdmitError(w, req.ChainID, err)
+		return
+	}
+
+	if snap.IBCSourceChainID != "" {
+		h.pourIBC(w, r, snap, req.Address, decision)
 		return
 	}
 
@@ -264,4 +270,78 @@ func extractIP(remoteAddr string) string {
 		return remoteAddr
 	}
 	return host
+}
+
+func (h *Handler) pourIBC(
+	w http.ResponseWriter, r *http.Request,
+	destSnap chain.ChainSnapshot, address string, decision *abuse.Decision,
+) {
+	chainID := destSnap.Info.ChainID
+	dripCoin := decision.DripCoin
+	amount := fmt.Sprintf("%s%s", dripCoin.Amount, dripCoin.Denom)
+	ip := extractIP(r.RemoteAddr)
+	now := time.Now().Unix()
+
+	srcSnap, ok := h.source.GetActive(destSnap.IBCSourceChainID)
+	if !ok {
+		pourRequestsTotal.WithLabelValues(chainID, "ibc_no_source").Inc()
+		writeError(w, http.StatusServiceUnavailable, "source chain not active")
+		return
+	}
+
+	channels := h.source.ChannelsFor(srcSnap.Info.ChainName)
+	ch, ok, ambiguous := chainregistry.SelectChannel(channels, srcSnap.Info.ChainName, destSnap.Info.ChainName)
+	if !ok {
+		pourRequestsTotal.WithLabelValues(chainID, "ibc_no_channel").Inc()
+		writeError(w, http.StatusServiceUnavailable, "no IBC channel to destination chain")
+		return
+	}
+	if ambiguous {
+		slog.WarnContext(r.Context(), "pourIBC: multiple live channels, using first",
+			"src", srcSnap.Info.ChainName, "dst", destSnap.Info.ChainName)
+	}
+
+	channelID, portID, _, _ := ch.ChannelFor(srcSnap.Info.ChainName)
+
+	result, err := h.source.IBCTransfer(r.Context(), destSnap.IBCSourceChainID, tx.TransferRequest{
+		KeyIndex:         0,
+		SourcePort:       portID,
+		SourceChannel:    channelID,
+		Token:            tx.Coin{Denom: dripCoin.Denom, Amount: dripCoin.Amount},
+		ReceiverAddress:  address,
+		TimeoutTimestamp: uint64(time.Now().Add(destSnap.IBCTimeout).UnixNano()),
+	})
+	if err != nil {
+		pourRequestsTotal.WithLabelValues(chainID, "ibc_broadcast_error").Inc()
+		slog.ErrorContext(r.Context(), "pourIBC: transfer", "chain", chainID, "error", err)
+		writeError(w, http.StatusBadGateway, "IBC transfer failed")
+		return
+	}
+
+	slog.DebugContext(r.Context(), "pourIBC: transfer confirmed",
+		"chain", chainID, "tx_hash", result.TxHash, "packet_seq", result.PacketSequence)
+
+	dripID, recordErr := h.dripStore.RecordDrip(r.Context(), store.DripRecord{
+		ChainID:     chainID,
+		Address:     address,
+		Coins:       amount,
+		RequesterIP: ip,
+		Mechanism:   "ibc",
+		TxHash:      result.TxHash,
+		Status:      pourapi.StatusConfirmed,
+		RequestedAt: now,
+		CompletedAt: now,
+	})
+	if recordErr != nil {
+		slog.ErrorContext(r.Context(), "pourIBC: record drip", "tx_hash", result.TxHash, "error", recordErr)
+	}
+
+	pourRequestsTotal.WithLabelValues(chainID, "confirmed").Inc()
+	writeJSON(w, http.StatusOK, pourapi.PourResponse{
+		DripID:    dripID,
+		Status:    pourapi.StatusConfirmed,
+		Amount:    amount,
+		Mechanism: "ibc",
+		TxHash:    result.TxHash,
+	})
 }

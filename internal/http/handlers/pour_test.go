@@ -27,9 +27,11 @@ var testLastChanged = time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 type mockBroadcaster struct {
 	result *tx.BroadcastResult
 	err    error
+	calls  int
 }
 
 func (m *mockBroadcaster) BuildAndBroadcast(_ context.Context, _ tx.SendRequest) (*tx.BroadcastResult, error) {
+	m.calls++
 	return m.result, m.err
 }
 
@@ -62,9 +64,11 @@ func (*mockDripStore) UpdateDrip(_ context.Context, _ int64, _, _ string, _ int6
 
 // stubChainSource implements chain.ChainSource for handler tests.
 type stubChainSource struct {
-	snaps       map[string]chain.ChainSnapshot
-	channels    map[string][]chainregistry.IBCChannel
-	allChannels []chainregistry.IBCChannel
+	snaps             map[string]chain.ChainSnapshot
+	channels          map[string][]chainregistry.IBCChannel
+	allChannels       []chainregistry.IBCChannel
+	ibcTransferResult tx.TransferResult
+	ibcTransferErr    error
 }
 
 func (s *stubChainSource) GetActive(chainID string) (chain.ChainSnapshot, bool) {
@@ -91,8 +95,8 @@ func (s *stubChainSource) AllIBCChannels() []chainregistry.IBCChannel {
 	return s.allChannels
 }
 
-func (*stubChainSource) IBCTransfer(_ context.Context, _ string, _ tx.TransferRequest) (tx.TransferResult, error) {
-	return tx.TransferResult{}, nil
+func (s *stubChainSource) IBCTransfer(_ context.Context, _ string, _ tx.TransferRequest) (tx.TransferResult, error) {
+	return s.ibcTransferResult, s.ibcTransferErr
 }
 
 // ----- helpers -----
@@ -491,5 +495,115 @@ func TestChainDetail_notFound(t *testing.T) {
 	router.ServeHTTP(w, newChainDetailRequest("unknown-1"))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status: got %d, want 404", w.Code)
+	}
+}
+
+func ibcTestSource(ibcTransferResult tx.TransferResult, ibcTransferErr error, withChannel bool) *stubChainSource {
+	channels := map[string][]chainregistry.IBCChannel{}
+	if withChannel {
+		channels["simapp-a"] = []chainregistry.IBCChannel{{
+			ChainNameA: "simapp-a",
+			ChainNameB: "simapp-b",
+			ChannelA:   "channel-0",
+			ChannelB:   "channel-0",
+			PortA:      "transfer",
+			PortB:      "transfer",
+			Status:     "live",
+			Preferred:  true,
+		}}
+	}
+	return &stubChainSource{
+		snaps: map[string]chain.ChainSnapshot{
+			"simapp-b-1": {
+				Info: &chainregistry.ChainInfo{
+					ChainID:      "simapp-b-1",
+					ChainName:    "simapp-b",
+					Bech32Prefix: "cosmos",
+					Slip44:       118,
+					KeyAlgo:      chainregistry.KeyAlgoSecp256k1,
+				},
+				Drip: chainregistry.DripPolicy{
+					Anonymous:           "1000000uosmo",
+					MaxPerAddressPerDay: "50000000uosmo",
+				},
+				IBCSourceChainID: "simapp-a-1",
+			},
+			"simapp-a-1": {
+				Info: &chainregistry.ChainInfo{
+					ChainID:      "simapp-a-1",
+					ChainName:    "simapp-a",
+					Bech32Prefix: "cosmos",
+					Slip44:       118,
+					KeyAlgo:      chainregistry.KeyAlgoSecp256k1,
+				},
+				Drip: chainregistry.DripPolicy{
+					Anonymous:           "1000000ustake",
+					MaxPerAddressPerDay: "50000000ustake",
+				},
+			},
+		},
+		channels:          channels,
+		ibcTransferResult: ibcTransferResult,
+		ibcTransferErr:    ibcTransferErr,
+	}
+}
+
+func TestPour_IBCRoute(t *testing.T) {
+	src := ibcTestSource(tx.TransferResult{TxHash: "IBC_TX1"}, nil, true)
+	bc := &mockBroadcaster{}
+	ds := &mockDripStore{id: 7}
+	h := New(Deps{
+		Source:       src,
+		Broadcasters: map[string]Broadcaster{"simapp-a-1": bc},
+		Gate:         okAdmitter(),
+		DripStore:    ds,
+		Version:      "test",
+	})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", w.Code)
+	}
+	var resp pourapi.PourResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Status != pourapi.StatusConfirmed {
+		t.Errorf("Status: got %q, want confirmed", resp.Status)
+	}
+	if resp.TxHash != "IBC_TX1" {
+		t.Errorf("TxHash: got %q, want IBC_TX1", resp.TxHash)
+	}
+	if resp.Mechanism != "ibc" {
+		t.Errorf("Mechanism: got %q, want ibc", resp.Mechanism)
+	}
+	if bc.calls != 0 {
+		t.Errorf("BuildAndBroadcast calls: got %d, want 0", bc.calls)
+	}
+}
+
+func TestPour_IBCRoute_NoChannel(t *testing.T) {
+	src := ibcTestSource(tx.TransferResult{}, nil, false)
+	h := New(Deps{
+		Source:    src,
+		Gate:      okAdmitter(),
+		DripStore: &mockDripStore{},
+		Version:   "test",
+	})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: got %d, want 503", w.Code)
+	}
+	var errResp pourapi.ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(errResp.Error, "no IBC channel") {
+		t.Errorf("error %q: want it to mention no IBC channel", errResp.Error)
 	}
 }
