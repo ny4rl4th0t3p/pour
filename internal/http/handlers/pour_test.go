@@ -210,6 +210,42 @@ func TestPour_powRequired(t *testing.T) {
 	}
 }
 
+func TestPour_badPoW(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrBadPoW}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", w.Code)
+	}
+}
+
+func TestPour_badNonce(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrBadNonce}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", w.Code)
+	}
+}
+
+func TestPour_badSignature(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrBadSignature}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400", w.Code)
+	}
+}
+
+func TestPour_predicateFailed(t *testing.T) {
+	h := newTestHandler(t, &mockBroadcaster{}, &mockAdmitter{err: abuse.ErrPredicateFailed}, &mockDripStore{})
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"osmosis-1","address":"osmo1abc123defg"}`))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status: got %d, want 403", w.Code)
+	}
+}
+
 func TestPour_broadcastError(t *testing.T) {
 	bc := &mockBroadcaster{err: tx.ErrChainUnreachable}
 	h := newTestHandler(t, bc, okAdmitter(), &mockDripStore{})

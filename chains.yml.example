@@ -3,17 +3,22 @@
 
 abuse:
   # All mechanisms default to false — enable what you need.
-  # pow:
-  #   enabled: true
-  #   difficulty: medium    # easy | medium | hard | <positive integer>
-  # api_keys:
-  #   enabled: true
-  # signature_challenge:
-  #   enabled: true
-  #   require_predicate: none   # none | has_balance
+  pow:
+    enabled: true
+    difficulty: medium          # easy | medium | hard | <positive integer>
+
+  api_keys:
+    enabled: true
+
+  signature_challenge:
+    enabled: false
+    require_predicate: none     # none | has_balance
+    # predicate_chain_id: ""    # chain to query for the predicate; defaults to the chain being dripped
+    # predicate_min_amount: ""  # required when require_predicate is has_balance (e.g. "1000000uatom")
+
   ip_rate_limit:
-    requests_per_window: 10   # number of requests allowed per window
-    window: 1h                # duration window: 1h, 30m, 5m, etc. (default: 1h)
+    requests_per_window: 10     # number of requests allowed per window
+    window: 1h                  # duration window: 1h, 30m, 5m, etc. (default: 1h)
 
 chains:
   - chain_id: osmosis-1
@@ -29,6 +34,7 @@ chains:
         low_gas_price: "0.01"
     drip:
       anonymous: 1000000uosmo                 # REQUIRED
+      signed: 5000000uosmo                    # optional: higher drip for signed-wallet requests
       max_per_address_per_day: 50000000uosmo  # REQUIRED
 
     ## Concurrency — optional; production-grade example shown below

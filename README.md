@@ -299,7 +299,7 @@ pour chains refresh            trigger an immediate registry re-fetch
 - [x] **v0.1.0** — single-chain drip, embedded UI, IP rate limiting
 - [x] **v0.2.0** — chain registry integration, multi-chain runtime, admin API
 - [x] **v0.3.0** — batch window, multiple distributor wallets, gRPC endpoint failover
-- [ ] **v0.4.0** — PoW challenge, API keys, signed-wallet authentication
+- [x] **v0.4.0** — PoW challenge, API keys, signed-wallet authentication
 - [ ] **v0.5.0** — IBC plumbing
 - [ ] **v0.6.0** — IBC drips
 - [ ] **v0.7.0** — devnet tooling and local testing helpers

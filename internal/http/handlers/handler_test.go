@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
@@ -59,6 +60,38 @@ func TestInfo(t *testing.T) {
 	}
 	if resp.Abuse.SignatureChallengeEnabled {
 		t.Error("signature_challenge_enabled: want false for zero AbuseCfg")
+	}
+}
+
+func TestInfo_abuseFlags(t *testing.T) {
+	h := New(Deps{
+		Source:  testSource,
+		Version: "test",
+		AbuseCfg: config.AbuseConfig{
+			PoW:                config.AbusePoWConfig{Enabled: true},
+			APIKeys:            config.AbuseAPIKeysConfig{Enabled: true},
+			SignatureChallenge: config.AbuseSignatureChallengeConfig{Enabled: true},
+		},
+	})
+	w := httptest.NewRecorder()
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/info", http.NoBody)
+	h.Info(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", w.Code)
+	}
+	var resp pourapi.InfoResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Abuse.PoWEnabled {
+		t.Error("pow_enabled: want true")
+	}
+	if !resp.Abuse.APIKeysEnabled {
+		t.Error("api_keys_enabled: want true")
+	}
+	if !resp.Abuse.SignatureChallengeEnabled {
+		t.Error("signature_challenge_enabled: want true")
 	}
 }
 
