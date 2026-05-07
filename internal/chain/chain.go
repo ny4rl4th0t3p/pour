@@ -19,6 +19,7 @@ import (
 type txBroadcaster interface {
 	BuildAndBroadcast(ctx context.Context, req tx.SendRequest) (*tx.BroadcastResult, error)
 	BuildAndBroadcastMulti(ctx context.Context, req tx.BatchSendRequest) (*tx.BroadcastResult, error)
+	BuildAndBroadcastTransfer(ctx context.Context, req tx.TransferRequest) (tx.TransferResult, error)
 	QueryBalance(ctx context.Context, address, denom string) (tx.Coin, error)
 	Close() error
 }
@@ -36,6 +37,8 @@ type Chain struct {
 	refillInterval   time.Duration
 	ibcTimeout       time.Duration
 	log              *slog.Logger
+
+	ibcSourceChainID string
 
 	multiSendDisabled   atomic.Bool
 	suspended           atomic.Bool
@@ -58,6 +61,18 @@ func newChain(
 	cfg config.ChainConfig,
 	log *slog.Logger,
 ) (*Chain, error) {
+	if cfg.IBC.SourceChainID != "" {
+		ibcTimeout, _ := time.ParseDuration(cfg.IBC.Timeout) // already validated
+		log.Debug("chain is IBC-destination, no tx client created", "chain_id", info.ChainID)
+		return &Chain{
+			info:             info,
+			drip:             drip,
+			ibcTimeout:       ibcTimeout,
+			ibcSourceChainID: cfg.IBC.SourceChainID,
+			log:              log,
+		}, nil
+	}
+
 	n := cfg.DistributorCount()
 	keyIndices := make([]uint32, n+1)
 	for i := range keyIndices {
@@ -182,6 +197,9 @@ func (c *Chain) Drip() chainregistry.DripPolicy { return c.drip }
 // IBCTimeout returns the configured MsgTransfer timeout duration for this chain.
 func (c *Chain) IBCTimeout() time.Duration { return c.ibcTimeout }
 
+// IBCSourceChainID returns the source chain ID for IBC-destination chains, or empty string.
+func (c *Chain) IBCSourceChainID() string { return c.ibcSourceChainID }
+
 // Client returns the underlying *tx.Client. Returns nil for test chains backed by stubs.
 func (c *Chain) Client() *tx.Client {
 	if cl, ok := c.client.(*tx.Client); ok {
@@ -191,11 +209,18 @@ func (c *Chain) Client() *tx.Client {
 }
 
 // Close closes the underlying gRPC connection.
-func (c *Chain) Close() { _ = c.client.Close() }
+func (c *Chain) Close() {
+	if c.client != nil {
+		_ = c.client.Close()
+	}
+}
 
 // Pour routes req to the distributor pool. Returns ErrChainSuspended or ErrSyncMode
 // when the chain cannot accept the request.
 func (c *Chain) Pour(_ context.Context, req batch.Request) error {
+	if c.ibcSourceChainID != "" {
+		return ErrIBCDestination
+	}
 	if c.suspended.Load() {
 		return ErrChainSuspended
 	}
@@ -220,7 +245,9 @@ func (c *Chain) Start(ctx context.Context) {
 	if c.endpointPool != nil {
 		startProbeLoop(ctx, c.endpointPool, c.log)
 	}
-	go c.RefillLoop(ctx)
+	if c.ibcSourceChainID == "" {
+		go c.RefillLoop(ctx)
+	}
 }
 
 // Suspend marks the chain as suspended and logs the reason.
