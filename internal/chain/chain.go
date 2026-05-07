@@ -34,6 +34,7 @@ type Chain struct {
 	distributorAddrs []string // key indices 1..N
 	refillThreshold  tx.Coin
 	refillInterval   time.Duration
+	ibcTimeout       time.Duration
 	log              *slog.Logger
 
 	multiSendDisabled   atomic.Bool
@@ -105,6 +106,8 @@ func newChain(
 		return nil, err
 	}
 
+	ibcTimeout, _ := time.ParseDuration(cfg.IBC.Timeout) // already validated; error impossible
+
 	c := &Chain{
 		info:             info,
 		drip:             drip,
@@ -114,6 +117,7 @@ func newChain(
 		distributorAddrs: distributorAddrs,
 		refillThreshold:  refillThreshold,
 		refillInterval:   refillInterval,
+		ibcTimeout:       ibcTimeout,
 		log:              log,
 	}
 
@@ -174,6 +178,9 @@ func (c *Chain) Info() *chainregistry.ChainInfo { return c.info }
 
 // Drip returns the drip policy for this chain.
 func (c *Chain) Drip() chainregistry.DripPolicy { return c.drip }
+
+// IBCTimeout returns the configured MsgTransfer timeout duration for this chain.
+func (c *Chain) IBCTimeout() time.Duration { return c.ibcTimeout }
 
 // Client returns the underlying *tx.Client. Returns nil for test chains backed by stubs.
 func (c *Chain) Client() *tx.Client {

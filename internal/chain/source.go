@@ -8,8 +8,9 @@ import (
 
 // ChainSnapshot is a point-in-time view of a single active chain.
 type ChainSnapshot struct {
-	Info *chainregistry.ChainInfo
-	Drip chainregistry.DripPolicy
+	Info       *chainregistry.ChainInfo
+	Drip       chainregistry.DripPolicy
+	IBCTimeout time.Duration
 }
 
 // ChainSource is the interface HTTP handlers use to access active chain data.

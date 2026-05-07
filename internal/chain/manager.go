@@ -162,7 +162,7 @@ func (m *Manager) GetActive(chainID string) (ChainSnapshot, bool) {
 	if c == nil {
 		return ChainSnapshot{}, false
 	}
-	return ChainSnapshot{Info: c.Info(), Drip: c.Drip()}, true
+	return ChainSnapshot{Info: c.Info(), Drip: c.Drip(), IBCTimeout: c.IBCTimeout()}, true
 }
 
 // ListActive returns snapshots of all active chains, sorted by chain ID.
@@ -170,7 +170,7 @@ func (m *Manager) ListActive() []ChainSnapshot {
 	m.mu.RLock()
 	out := make([]ChainSnapshot, 0, len(m.chains))
 	for _, c := range m.chains {
-		out = append(out, ChainSnapshot{Info: c.Info(), Drip: c.Drip()})
+		out = append(out, ChainSnapshot{Info: c.Info(), Drip: c.Drip(), IBCTimeout: c.IBCTimeout()})
 	}
 	m.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool {
