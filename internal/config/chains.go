@@ -165,6 +165,10 @@ type ChainConfig struct {
 // IBCConfig holds per-chain IBC transfer settings.
 type IBCConfig struct {
 	Timeout string `koanf:"timeout"` // Go duration string, e.g. "10m"; default 10m
+	// SourceChainID, when non-empty, marks this chain as an IBC destination: pour
+	// transfers tokens from the source chain's wallet to recipients on this chain.
+	// The source chain must be another chain_id in the same config.
+	SourceChainID string `koanf:"source_chain_id"`
 }
 
 // IsEnabled reports whether the chain is explicitly enabled.
@@ -348,8 +352,36 @@ func LoadChains(path string) (*ChainsConfig, error) {
 			return nil, err
 		}
 	}
+	if err := validateIBCSources(cfg.Chains); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
+}
+
+// validateIBCSources checks cross-chain ibc.source_chain_id references.
+func validateIBCSources(chains []ChainConfig) error {
+	ids := make(map[string]bool, len(chains))
+	ibcSources := make(map[string]bool, len(chains)) // chain IDs that are IBC destinations
+	for i := range chains {
+		ids[chains[i].ChainID] = true
+		if chains[i].IBC.SourceChainID != "" {
+			ibcSources[chains[i].ChainID] = true
+		}
+	}
+	for i := range chains {
+		src := chains[i].IBC.SourceChainID
+		if src == "" {
+			continue
+		}
+		if !ids[src] {
+			return fmt.Errorf("config: chain %q: ibc.source_chain_id %q not found in chains list", chains[i].ChainID, src)
+		}
+		if ibcSources[src] {
+			return fmt.Errorf("config: chain %q: ibc.source_chain_id %q cannot itself be an IBC destination chain", chains[i].ChainID, src)
+		}
+	}
+	return nil
 }
 
 func validateChain(i int, chain *ChainConfig) error {
@@ -407,7 +439,7 @@ func validateStandalone(chain *ChainConfig) error {
 	if chain.Slip44 == nil {
 		return fmt.Errorf("config: standalone chain %q: slip44 is required", chain.ChainID)
 	}
-	if chain.Endpoints == nil || len(chain.Endpoints.GRPC) == 0 {
+	if (chain.Endpoints == nil || len(chain.Endpoints.GRPC) == 0) && chain.IBC.SourceChainID == "" {
 		return fmt.Errorf("config: standalone chain %q: at least one endpoints.grpc is required", chain.ChainID)
 	}
 	if len(chain.FeeTokens) == 0 {

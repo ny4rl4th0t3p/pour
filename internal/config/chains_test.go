@@ -911,3 +911,76 @@ func TestIBCDefaults_zeroError(t *testing.T) {
 		t.Errorf("error %q: want it to mention ibc.timeout", got)
 	}
 }
+
+const validTwoChainYAML = `
+chains:
+  - chain_id: simapp-a-1
+    enabled: true
+    drip:
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
+  - chain_id: simapp-b-1
+    enabled: true
+    drip:
+      anonymous: "1000000uosmo"
+      max_per_address_per_day: "10000000uosmo"
+    ibc:
+      source_chain_id: simapp-a-1
+`
+
+func TestIBCSourceChainID_valid(t *testing.T) {
+	cfg, err := LoadChains(writeTemp(t, validTwoChainYAML))
+	if err != nil {
+		t.Fatalf("LoadChains: %v", err)
+	}
+	if got := cfg.Chains[1].IBC.SourceChainID; got != "simapp-a-1" {
+		t.Errorf("IBC.SourceChainID: got %q, want simapp-a-1", got)
+	}
+}
+
+func TestIBCSourceChainID_unknownSource(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: simapp-a-1
+    enabled: true
+    drip:
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
+    ibc:
+      source_chain_id: nonexistent-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("LoadChains: expected error for unknown source_chain_id, got nil")
+	}
+	if !strings.Contains(err.Error(), "source_chain_id") {
+		t.Errorf("error %q: want it to mention source_chain_id", err.Error())
+	}
+}
+
+func TestIBCSourceChainID_chainedSources(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: chain-a-1
+    enabled: true
+    drip:
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
+    ibc:
+      source_chain_id: chain-b-1
+  - chain_id: chain-b-1
+    enabled: true
+    drip:
+      anonymous: "1000000uosmo"
+      max_per_address_per_day: "10000000uosmo"
+    ibc:
+      source_chain_id: chain-a-1
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("LoadChains: expected error for chained IBC sources, got nil")
+	}
+	if !strings.Contains(err.Error(), "source_chain_id") {
+		t.Errorf("error %q: want it to mention source_chain_id", err.Error())
+	}
+}
