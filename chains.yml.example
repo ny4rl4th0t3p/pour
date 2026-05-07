@@ -47,3 +47,14 @@ chains:
     ## IBC — optional; controls MsgTransfer timeout for outbound IBC transfers
     # ibc:
     #   timeout: 10m     # MsgTransfer timeout; default 10m; increase for slow relayers
+
+  ## IBC destination chain — pour holds tokens on osmosis-1 and IBC-transfers to this chain.
+  ## No gRPC endpoints needed here; the source chain (osmosis-1) provides the wallet.
+  # - chain_id: cosmoshub-4
+  #   enabled: true
+  #   drip:
+  #     anonymous: 1000000uatom
+  #     max_per_address_per_day: 10000000uatom
+  #   ibc:
+  #     source_chain_id: osmosis-1  # tokens are sent from osmosis-1 via MsgTransfer
+  #     timeout: 10m
