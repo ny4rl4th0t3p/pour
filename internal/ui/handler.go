@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-//go:embed index.html altcha.min.js
+//go:embed index.html
 var assets embed.FS
 
 // Handler returns an http.Handler that serves the embedded faucet UI.

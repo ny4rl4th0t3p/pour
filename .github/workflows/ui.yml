@@ -1,0 +1,31 @@
+name: UI
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'internal/ui/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Chromium
+        run: sudo apt-get install -y chromium-browser
+
+      - run: go test -v -count=1 -tags integration ./internal/ui/...

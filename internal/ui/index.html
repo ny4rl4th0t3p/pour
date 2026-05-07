@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pour — Cosmos Faucet</title>
+    <script async defer src="https://cdn.jsdelivr.net/gh/altcha-org/altcha/dist/altcha.min.js" type="module"></script>
     <style>
         *, *::before, *::after {
             box-sizing: border-box;
@@ -82,6 +83,22 @@
             background: #4f46e5;
         }
 
+        .keplr-btn {
+            background: #e5e7eb;
+            color: #6b7280;
+            margin-bottom: .75rem;
+        }
+
+        .keplr-btn:disabled {
+            background: #e5e7eb;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .altcha-wrap {
+            margin-bottom: .75rem;
+        }
+
         .result {
             margin-top: 1rem;
             padding: .75rem;
@@ -116,6 +133,8 @@
     <label for="address">Address</label>
     <input id="address" type="text" placeholder="osmo1…" autocomplete="off" spellcheck="false">
 
+    <div id="abuse-widgets"></div>
+
     <button id="submit" type="button" disabled>Request tokens</button>
 
     <div id="result" class="result"></div>
@@ -126,11 +145,31 @@
     const addrInput = document.getElementById('address');
     const submitBtn = document.getElementById('submit');
     const resultEl = document.getElementById('result');
+    const abuseEl = document.getElementById('abuse-widgets');
+
+    let powEnabled = false;
+    let sigEnabled = false;
+    let challengeJSON = null;
+    let altchaWidget = null;
+    let altchaVerified = false;
 
     function showResult(msg, ok) {
         resultEl.textContent = msg;
         resultEl.className = 'result ' + (ok ? 'success' : 'error');
         resultEl.style.display = 'block';
+    }
+
+    async function fetchChallenge() {
+        try {
+            const res = await fetch('/v1/pow/challenge');
+            if (!res.ok) return;
+            const data = await res.json();
+            challengeJSON = data.challenge;
+            if (altchaWidget && challengeJSON) {
+                altchaVerified = false;
+                altchaWidget.challenge = JSON.parse(challengeJSON);
+            }
+        } catch (_) { /* non-fatal; submit will be blocked by altchaVerified */ }
     }
 
     async function init() {
@@ -139,7 +178,11 @@
                 fetch('/v1/info'),
                 fetch('/v1/chains'),
             ]);
+            const info = await infoRes.json();
             const chains = await chainsRes.json();
+
+            powEnabled = !!(info.abuse && info.abuse.pow_enabled);
+            sigEnabled = !!(info.abuse && info.abuse.signature_challenge_enabled);
 
             chainSel.innerHTML = '';
             if (!chains.chains || chains.chains.length === 0) {
@@ -153,10 +196,35 @@
                 chainSel.appendChild(opt);
             });
             chainSel.disabled = false;
-            submitBtn.disabled = false;
 
-            // v0.4.0: if (await infoRes.json()).abuse.pow_enabled → init Altcha widget
-            void infoRes;
+            if (sigEnabled) {
+                const keplrBtn = document.createElement('button');
+                keplrBtn.type = 'button';
+                keplrBtn.className = 'keplr-btn';
+                keplrBtn.disabled = true;
+                keplrBtn.textContent = 'Sign with Keplr (coming soon)';
+                abuseEl.appendChild(keplrBtn);
+            }
+
+            if (powEnabled) {
+                const wrap = document.createElement('div');
+                wrap.className = 'altcha-wrap';
+                altchaWidget = document.createElement('altcha-widget');
+                altchaWidget.setAttribute('auto', 'onload');
+                altchaWidget.setAttribute('hidelogo', '');
+                wrap.appendChild(altchaWidget);
+                abuseEl.appendChild(wrap);
+
+                altchaWidget.addEventListener('statechange', function (ev) {
+                    altchaVerified = ev.detail && ev.detail.state === 'verified';
+                    submitBtn.disabled = !altchaVerified;
+                });
+
+                await fetchChallenge();
+                // submit stays disabled until statechange fires with verified
+            } else {
+                submitBtn.disabled = false;
+            }
         } catch (err) {
             showResult('Failed to load chain list: ' + err.message, false);
         }
@@ -176,21 +244,35 @@
         resultEl.style.display = 'none';
 
         try {
+            const body = {chain_id: chainID, address: address};
+            if (powEnabled && altchaWidget) {
+                body.pow = {challenge: challengeJSON, solution: altchaWidget.value};
+            }
+
             const res = await fetch('/v1/pour', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({chain_id: chainID, address: address}),
+                body: JSON.stringify(body),
             });
             const data = await res.json();
             if (res.ok) {
-                showResult('Sent ' + data.amount + '  •  tx: ' + data.tx_hash, true);
+                showResult('Sent ' + data.amount + '  •  tx: ' + (data.tx_hash || 'queued'), true);
+                if (powEnabled) {
+                    altchaVerified = false;
+                    submitBtn.disabled = true;
+                    await fetchChallenge();
+                }
             } else {
                 showResult(data.error || 'Unknown error', false);
+                if (powEnabled) submitBtn.disabled = !altchaVerified;
             }
         } catch (err) {
             showResult('Request failed: ' + err.message, false);
+            if (powEnabled) submitBtn.disabled = !altchaVerified;
         } finally {
-            submitBtn.disabled = false;
+            if (!powEnabled) {
+                submitBtn.disabled = false;
+            }
             submitBtn.textContent = 'Request tokens';
         }
     });

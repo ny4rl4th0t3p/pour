@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"io"
 	nethttp "net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -304,25 +303,6 @@ func TestServer_ui_root(t *testing.T) {
 	ct := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "text/html") {
 		t.Errorf("Content-Type: got %q, want text/html prefix", ct)
-	}
-}
-
-func TestServer_ui_altchaJS(t *testing.T) {
-	srv := newTestSrv(t)
-	defer srv.Close()
-
-	resp := get(t, srv, "/altcha.min.js")
-	defer resp.Body.Close()
-
-	if resp.StatusCode != nethttp.StatusOK {
-		t.Fatalf("status: got %d, want 200", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	if len(body) == 0 {
-		t.Error("altcha.min.js: empty body")
 	}
 }
 
