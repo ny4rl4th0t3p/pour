@@ -41,8 +41,9 @@ pour serve
 Fund the address derived from `POUR_MNEMONIC` on each chain before starting.
 
 The admin token resolves in order: `.pour-admin-token` file → `POUR_ADMIN_TOKEN` env var → auto-generate and write to
-`.pour-admin-token`. Once the file exists it takes precedence over the env var, so rotations survive restarts without
-the env var winning back. To revert to an env-var-managed token, delete the file.
+`.pour-admin-token`. On a fresh start with neither set, the generated token is logged and written to `.pour-admin-token`
+— read it with `cat .pour-admin-token`. Once the file exists it takes precedence over the env var, so rotations survive
+restarts without the env var winning back. To revert to an env-var-managed token, delete the file.
 
 ## Configuration
 
