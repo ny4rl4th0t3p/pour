@@ -13,11 +13,16 @@ func (h *Handler) Info(w http.ResponseWriter, _ *http.Request) {
 	if t := h.source.LastFetched(); !t.IsZero() {
 		lastFetched = t.UTC().Format(time.RFC3339)
 	}
+	ibcChannelCount := 0
+	for _, snap := range h.source.ListActive() {
+		ibcChannelCount += len(h.source.ChannelsFor(snap.Info.ChainName))
+	}
 	writeJSON(w, http.StatusOK, pourapi.InfoResponse{
 		Version:             h.version,
 		RegistryLastFetched: lastFetched,
 		RegistryRefreshMode: h.registryRefreshMode,
 		PendingFrozenCount:  h.source.PendingFrozenCount(),
+		IBCChannelCount:     ibcChannelCount,
 		Abuse: pourapi.AbuseInfo{
 			PoWEnabled:                h.abuseCfg.PoW.Enabled,
 			APIKeysEnabled:            h.abuseCfg.APIKeys.Enabled,

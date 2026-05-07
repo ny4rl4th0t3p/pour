@@ -35,6 +35,20 @@ func (h *Handler) ChainDetail(w http.ResponseWriter, r *http.Request) {
 	if t := snap.Info.LastChanged; !t.IsZero() {
 		lastChanged = t.UTC().Format(time.RFC3339)
 	}
+	rawChannels := h.source.ChannelsFor(snap.Info.ChainName)
+	ibcChannels := make([]pourapi.IBCChannelInfo, 0, len(rawChannels))
+	for i := range rawChannels {
+		channelID, portID, peerName, _ := rawChannels[i].ChannelFor(snap.Info.ChainName)
+		peerChannelID, _, _, _ := rawChannels[i].ChannelFor(peerName)
+		ibcChannels = append(ibcChannels, pourapi.IBCChannelInfo{
+			PeerChainName: peerName,
+			ChannelID:     channelID,
+			PeerChannelID: peerChannelID,
+			PortID:        portID,
+			Status:        rawChannels[i].Status,
+			Preferred:     rawChannels[i].Preferred,
+		})
+	}
 	writeJSON(w, http.StatusOK, pourapi.ChainDetailResponse{
 		ChainID:      snap.Info.ChainID,
 		ChainName:    snap.Info.ChainName,
@@ -42,5 +56,6 @@ func (h *Handler) ChainDetail(w http.ResponseWriter, r *http.Request) {
 		Slip44:       snap.Info.Slip44,
 		DripAmount:   snap.Drip.Anonymous,
 		LastChanged:  lastChanged,
+		IBCChannels:  ibcChannels,
 	})
 }
