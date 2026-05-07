@@ -1,14 +1,17 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ny4rl4th0t3p/pour/internal/abuse/apikey"
 	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
@@ -16,22 +19,33 @@ import (
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
+// APIKeyStore is the subset of apikey.Store used by admin handlers.
+type APIKeyStore interface {
+	Create(ctx context.Context, p apikey.CreateParams) (id, secret string, err error)
+	List(ctx context.Context) ([]*apikey.Key, error)
+	Revoke(ctx context.Context, id string) error
+}
+
 // Deps holds dependencies for the admin handler.
 type Deps struct {
-	RegStore   *chainregistry.Store
-	Manager    *chain.Manager
-	GasCache   *gascache.Cache
-	ConfigPath string
-	Logger     *slog.Logger
+	RegStore    *chainregistry.Store
+	Manager     *chain.Manager
+	GasCache    *gascache.Cache
+	ConfigPath  string
+	Logger      *slog.Logger
+	APIKeyStore APIKeyStore
+	TokenStore  *TokenStore
 }
 
 // Handler exposes admin endpoints as a chi sub-router.
 type Handler struct {
-	regStore   *chainregistry.Store
-	manager    *chain.Manager
-	gasCache   *gascache.Cache
-	configPath string
-	log        *slog.Logger
+	regStore    *chainregistry.Store
+	manager     *chain.Manager
+	gasCache    *gascache.Cache
+	configPath  string
+	log         *slog.Logger
+	apiKeyStore APIKeyStore
+	tokenStore  *TokenStore
 }
 
 // New creates a Handler from Deps.
@@ -40,11 +54,13 @@ func New(deps Deps) *Handler {
 		deps.Logger = slog.Default()
 	}
 	return &Handler{
-		regStore:   deps.RegStore,
-		manager:    deps.Manager,
-		gasCache:   deps.GasCache,
-		configPath: deps.ConfigPath,
-		log:        deps.Logger,
+		regStore:    deps.RegStore,
+		manager:     deps.Manager,
+		gasCache:    deps.GasCache,
+		configPath:  deps.ConfigPath,
+		log:         deps.Logger,
+		apiKeyStore: deps.APIKeyStore,
+		tokenStore:  deps.TokenStore,
 	}
 }
 
@@ -63,6 +79,10 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/chains/{chain}/gas-cache/reset", h.GasCacheReset)
 	r.Get("/chains/{chain}/status", h.ChainStatusGet)
 	r.Post("/chains/{chain}/resume", h.ChainResume)
+	r.Post("/api-keys", h.CreateAPIKey)
+	r.Get("/api-keys", h.ListAPIKeys)
+	r.Delete("/api-keys/{id}", h.RevokeAPIKey)
+	r.Post("/api-keys/rotate-admin", h.RotateAdmin)
 	return r
 }
 
@@ -327,6 +347,90 @@ func (h *Handler) ChainResume(w http.ResponseWriter, r *http.Request) {
 	}
 	c.Resume()
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type createKeyRequest struct {
+	Label            string            `json:"label"`
+	ChainScope       []string          `json:"chain_scope"`
+	PerChainDrips    map[string]string `json:"per_chain_drips,omitempty"`
+	RateLimitPerHour int               `json:"rate_limit_per_hour,omitempty"`
+	ExpiresAt        *time.Time        `json:"expires_at,omitempty"`
+}
+
+type createKeyResponse struct {
+	ID     string `json:"id"`
+	Secret string `json:"secret"`
+	Label  string `json:"label,omitempty"`
+}
+
+// CreateAPIKey handles POST /admin/api-keys.
+// Issues a new API key; the secret is returned once and never stored in plaintext.
+func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	var req createKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.ChainScope) == 0 {
+		writeError(w, http.StatusBadRequest, "chain_scope is required")
+		return
+	}
+	id, secret, err := h.apiKeyStore.Create(r.Context(), apikey.CreateParams{
+		Label:            req.Label,
+		ChainScope:       req.ChainScope,
+		PerChainDrips:    req.PerChainDrips,
+		RateLimitPerHour: req.RateLimitPerHour,
+		ExpiresAt:        req.ExpiresAt,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, createKeyResponse{ID: id, Secret: secret, Label: req.Label})
+}
+
+// ListAPIKeys handles GET /admin/api-keys.
+// Returns all non-revoked keys without their secrets.
+func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	keys, err := h.apiKeyStore.List(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if keys == nil {
+		keys = []*apikey.Key{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
+}
+
+// RevokeAPIKey handles DELETE /admin/api-keys/{id}.
+func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := h.apiKeyStore.Revoke(r.Context(), id); err != nil {
+		if errors.Is(err, apikey.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "key not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// RotateAdmin handles POST /admin/api-keys/rotate-admin.
+// Generates a new admin token, overwrites the token file, and invalidates the old token.
+// The new token is returned once in the response body.
+func (h *Handler) RotateAdmin(w http.ResponseWriter, _ *http.Request) {
+	if h.tokenStore == nil {
+		writeError(w, http.StatusServiceUnavailable, "token store not available")
+		return
+	}
+	newToken, err := h.tokenStore.Rotate()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"token": newToken})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
