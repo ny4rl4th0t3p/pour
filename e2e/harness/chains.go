@@ -34,14 +34,14 @@ func StartChainA(t *testing.T, ctx context.Context) *SimappChain {
 		simd keys add validator --keyring-backend test --home %[1]s &&
 		simd genesis add-genesis-account \
 		  $(simd keys show validator -a --keyring-backend test --home %[1]s) \
-		  10000000000uatom --home %[1]s &&
-		simd genesis gentx validator 1000000uatom \
+		  10000000000stake --home %[1]s &&
+		simd genesis gentx validator 1000000stake \
 		  --chain-id simapp-a-1 --keyring-backend test --home %[1]s &&
 		simd genesis collect-gentxs --home %[1]s &&
 		simd start --home %[1]s \
 		  --rpc.laddr tcp://0.0.0.0:26657 \
 		  --grpc.address 0.0.0.0:9090 \
-		  --minimum-gas-prices 0.025uatom
+		  --minimum-gas-prices 0.025stake
 	`, home)
 
 	req := testcontainers.ContainerRequest{

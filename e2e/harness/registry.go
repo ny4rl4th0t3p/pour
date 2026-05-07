@@ -16,7 +16,7 @@ import (
 func StartMockRegistry(t *testing.T, chainA *SimappChain) string {
 	t.Helper()
 
-	chainAJSON := chainJSON("simapp-a", "simapp-a-1", "cosmos", "uatom", chainA.GRPCAddr)
+	chainAJSON := chainJSON("simapp-a", "simapp-a-1", "cosmos", "stake", chainA.GRPCAddr)
 	chainBJSON := chainJSON("simapp-b", "simapp-b-1", "osmo", "uosmo", "127.0.0.1:19090")
 	ibcJSON := ibcFileJSON("simapp-a", "simapp-b")
 

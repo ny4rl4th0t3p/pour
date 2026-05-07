@@ -132,8 +132,8 @@ chains:
   - chain_id: simapp-a-1
     enabled: true
     drip:
-      anonymous: "1000000uatom"
-      max_per_address_per_day: "10000000uatom"
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
     ibc:
       timeout: "30s"
   - chain_id: simapp-b-1
