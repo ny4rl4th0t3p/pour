@@ -237,6 +237,16 @@ func (s *Store) SetOverrides(ov *OverrideSet) {
 	}
 }
 
+// AllIBCChannels returns a snapshot of every known IBC channel (unique pairs,
+// not per-chain endpoints). The slice is safe to use after the call returns.
+func (s *Store) AllIBCChannels() []IBCChannel {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]IBCChannel, len(s.ibcChannels))
+	copy(out, s.ibcChannels)
+	return out
+}
+
 // ChannelsFor returns all IBC channels where the given chain name (registry
 // chain_name, not chain_id) is one of the two sides.
 func (s *Store) ChannelsFor(chainName string) []IBCChannel {
