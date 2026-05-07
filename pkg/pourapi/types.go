@@ -57,6 +57,7 @@ type InfoResponse struct {
 	RegistryLastFetched string    `json:"registry_last_fetched"`
 	RegistryRefreshMode string    `json:"registry_refresh_mode"`
 	PendingFrozenCount  int       `json:"pending_frozen_count"`
+	IBCChannelCount     int       `json:"ibc_channel_count"`
 	Abuse               AbuseInfo `json:"abuse"`
 }
 
@@ -79,14 +80,25 @@ type ChainsResponse struct {
 	Chains []ChainInfo `json:"chains"`
 }
 
+// IBCChannelInfo describes one IBC transfer channel from a single chain's perspective.
+type IBCChannelInfo struct {
+	PeerChainName string `json:"peer_chain_name"`
+	ChannelID     string `json:"channel_id"`      // this chain's channel
+	PeerChannelID string `json:"peer_channel_id"` // peer chain's channel
+	PortID        string `json:"port_id"`
+	Status        string `json:"status"`
+	Preferred     bool   `json:"preferred"`
+}
+
 // ChainDetailResponse is returned by GET /v1/chains/{chain_id}.
 type ChainDetailResponse struct {
-	ChainID      string `json:"chain_id"`
-	ChainName    string `json:"chain_name"`
-	Bech32Prefix string `json:"bech32_prefix"`
-	Slip44       uint32 `json:"slip44"`
-	DripAmount   string `json:"drip_amount"`
-	LastChanged  string `json:"last_changed"` // RFC3339; empty if never updated
+	ChainID      string           `json:"chain_id"`
+	ChainName    string           `json:"chain_name"`
+	Bech32Prefix string           `json:"bech32_prefix"`
+	Slip44       uint32           `json:"slip44"`
+	DripAmount   string           `json:"drip_amount"`
+	LastChanged  string           `json:"last_changed"` // RFC3339; empty if never updated
+	IBCChannels  []IBCChannelInfo `json:"ibc_channels"`
 }
 
 // HealthResponse is returned by GET /health.

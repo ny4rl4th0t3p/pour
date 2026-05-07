@@ -62,7 +62,8 @@ func (*mockDripStore) UpdateDrip(_ context.Context, _ int64, _, _ string, _ int6
 
 // stubChainSource implements chain.ChainSource for handler tests.
 type stubChainSource struct {
-	snaps map[string]chain.ChainSnapshot
+	snaps    map[string]chain.ChainSnapshot
+	channels map[string][]chainregistry.IBCChannel
 }
 
 func (s *stubChainSource) GetActive(chainID string) (chain.ChainSnapshot, bool) {
@@ -80,6 +81,10 @@ func (s *stubChainSource) ListActive() []chain.ChainSnapshot {
 
 func (*stubChainSource) LastFetched() time.Time  { return time.Time{} }
 func (*stubChainSource) PendingFrozenCount() int { return 0 }
+
+func (s *stubChainSource) ChannelsFor(chainName string) []chainregistry.IBCChannel {
+	return s.channels[chainName]
+}
 
 // ----- helpers -----
 
