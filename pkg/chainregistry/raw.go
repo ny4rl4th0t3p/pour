@@ -51,8 +51,9 @@ type rawEndpoint struct {
 // The Chains field uses the unexported rawChainInfo type so external callers
 // cannot inspect chain data directly — they receive resolved *ChainInfo via Get.
 type Snapshot struct {
-	Revision string
-	Chains   map[string]rawChainInfo
+	Revision    string
+	Chains      map[string]rawChainInfo
+	IBCChannels []IBCChannel
 }
 
 // rawSnapshot is the top-level format of registry.json.

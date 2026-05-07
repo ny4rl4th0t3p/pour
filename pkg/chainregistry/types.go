@@ -74,6 +74,40 @@ func (s *FieldSources) setAll(src Source) {
 	s.BlockTime = src
 }
 
+// IBCChannel describes a single ICS20 transfer channel between two chains,
+// as read from the cosmos/chain-registry _IBC/ directory.
+type IBCChannel struct {
+	// Chain names (registry chain_name, not chain_id) on each side.
+	ChainNameA string
+	ChainNameB string
+
+	// Channel IDs and port IDs on each side.
+	ChannelA string // e.g. "channel-0"
+	ChannelB string // e.g. "channel-141"
+	PortA    string // almost always "transfer"
+	PortB    string // almost always "transfer"
+
+	// Metadata from the registry.
+	Ordering  string // "unordered"
+	Version   string // "ics20-1"
+	Status    string // "live" | "upcoming" | "killed"
+	Preferred bool
+}
+
+// ChannelFor returns the channel ID, port, and peer chain name on the given
+// chain's side of this pair. Returns ("", "", "", false) if chainName is not
+// one of the two sides.
+func (c IBCChannel) ChannelFor(chainName string) (channelID, port, peer string, ok bool) {
+	switch chainName {
+	case c.ChainNameA:
+		return c.ChannelA, c.PortA, c.ChainNameB, true
+	case c.ChainNameB:
+		return c.ChannelB, c.PortB, c.ChainNameA, true
+	default:
+		return "", "", "", false
+	}
+}
+
 // ChainInfo is the canonical runtime representation of a chain's configuration.
 // It is the type all consumers import and read. Values are immutable once
 // published: Store.UpdateLive and Store.Accept allocate a new ChainInfo and

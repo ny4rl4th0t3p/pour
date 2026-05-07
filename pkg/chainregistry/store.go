@@ -27,6 +27,7 @@ type Store struct {
 	standaloneBase map[string]ChainInfo  // pre-override base for standalone chains
 	standalone     map[string]struct{}   // chain IDs that came from config, not registry
 	live           *Snapshot             // nil until first UpdateLive
+	ibcChannels    []IBCChannel          // ICS20 channels from the last live snapshot
 	overrides      *OverrideSet
 
 	// pending holds freeze-policy changes awaiting Accept, keyed by chainID+":"+field.
@@ -118,6 +119,7 @@ func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
 
 	prevLive := s.live
 	s.live = snap
+	s.ibcChannels = snap.IBCChannels
 	cs := &ChangeSet{}
 	now := time.Now()
 
@@ -272,6 +274,20 @@ func (s *Store) SetOverrides(ov *OverrideSet) {
 		}
 		s.chains[chainID] = newInfo
 	}
+}
+
+// ChannelsFor returns all IBC channels where the given chain name (registry
+// chain_name, not chain_id) is one of the two sides.
+func (s *Store) ChannelsFor(chainName string) []IBCChannel {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []IBCChannel
+	for _, ch := range s.ibcChannels {
+		if _, _, _, ok := ch.ChannelFor(chainName); ok {
+			out = append(out, ch)
+		}
+	}
+	return out
 }
 
 // classifiableFields is the ordered list of field paths that UpdateLive diffs
