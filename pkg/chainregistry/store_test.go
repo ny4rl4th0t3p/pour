@@ -258,3 +258,54 @@ func TestUpdateLive_RegistryRevertClearsPending(t *testing.T) {
 		t.Errorf("Bech32Prefix = %q, want %q", info.Bech32Prefix, "beta")
 	}
 }
+
+func TestChannelsFor_PopulatedFromSnapshot(t *testing.T) {
+	s, err := New(Options{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	snap := parseSnap(t, readTestFile(t, "testdata/snapshots/initial-v1.json"))
+	snap.IBCChannels = []IBCChannel{
+		{
+			ChainNameA: "test-alpha", ChainNameB: "test-beta",
+			ChannelA: "channel-0", ChannelB: "channel-1",
+			PortA: "transfer", PortB: "transfer",
+			Version: "ics20-1", Status: "live", Preferred: true,
+		},
+	}
+	if _, err := s.UpdateLive(snap); err != nil {
+		t.Fatalf("UpdateLive: %v", err)
+	}
+
+	// test-alpha is a side of the channel.
+	chs := s.ChannelsFor("test-alpha")
+	if len(chs) != 1 {
+		t.Fatalf("ChannelsFor(test-alpha) = %d channels, want 1", len(chs))
+	}
+	if chs[0].ChannelA != "channel-0" {
+		t.Errorf("ChannelA = %q, want channel-0", chs[0].ChannelA)
+	}
+
+	// test-beta is the other side.
+	chs = s.ChannelsFor("test-beta")
+	if len(chs) != 1 {
+		t.Fatalf("ChannelsFor(test-beta) = %d channels, want 1", len(chs))
+	}
+
+	// a chain not in any channel returns empty.
+	chs = s.ChannelsFor("neutron")
+	if len(chs) != 0 {
+		t.Fatalf("ChannelsFor(neutron) = %d channels, want 0", len(chs))
+	}
+}
+
+func TestChannelsFor_EmptyBeforeUpdateLive(t *testing.T) {
+	s, err := New(Options{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if chs := s.ChannelsFor("osmosis"); len(chs) != 0 {
+		t.Fatalf("expected 0 channels before UpdateLive, got %d", len(chs))
+	}
+}

@@ -27,6 +27,7 @@ type Store struct {
 	standaloneBase map[string]ChainInfo  // pre-override base for standalone chains
 	standalone     map[string]struct{}   // chain IDs that came from config, not registry
 	live           *Snapshot             // nil until first UpdateLive
+	ibcChannels    []IBCChannel          // ICS20 channels from the last live snapshot
 	overrides      *OverrideSet
 
 	// pending holds freeze-policy changes awaiting Accept, keyed by chainID+":"+field.
@@ -118,6 +119,7 @@ func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
 
 	prevLive := s.live
 	s.live = snap
+	s.ibcChannels = snap.IBCChannels
 	cs := &ChangeSet{}
 	now := time.Now()
 
@@ -125,56 +127,17 @@ func (s *Store) UpdateLive(snap *Snapshot) (*ChangeSet, error) {
 		if _, isStandalone := s.standalone[chainID]; isStandalone {
 			continue
 		}
-
 		newInfo, err := s.resolveUnsafe(chainID)
 		if err != nil || newInfo == nil {
 			continue
 		}
-
 		old, existed := s.chains[chainID]
 		if !existed || prevLive == nil {
-			// New chain or first populate: add without policy.
 			newInfo.LastChanged = now
 			s.chains[chainID] = newInfo
 			continue
 		}
-
-		// Existing chain on a subsequent update: diff and apply policy.
-		hasChanged := false
-		for _, field := range classifiableFields {
-			ov, nv, changed := fieldValues(old, newInfo, field)
-			if !changed {
-				// If the registry reverted to the currently applied value, any
-				// stale pending entry for this field is now moot — clear it.
-				delete(s.pending, chainID+":"+field)
-				continue
-			}
-			hasChanged = true
-			fc := FieldChange{ChainID: chainID, Field: field, OldValue: ov, NewValue: nv}
-			switch classify(field) {
-			case FieldPolicyHotReload:
-				cs.HotReloaded = append(cs.HotReloaded, fc)
-			case FieldPolicyWarn:
-				cs.Warned = append(cs.Warned, fc)
-			case FieldPolicyFreeze:
-				cs.Frozen = append(cs.Frozen, fc)
-				key := chainID + ":" + field
-				s.pending[key] = &PendingChange{
-					ChainID: chainID, Field: field,
-					OldValue: ov, NewValue: nv,
-					DetectedAt: now, Source: SourceLive,
-				}
-				// Restore old value: Freeze means do not apply until accepted.
-				applyAcceptedField(newInfo, field, ov) //nolint:errcheck // only freeze fields passed, all handled
-			}
-		}
-
-		if hasChanged {
-			newInfo.LastChanged = now
-		} else {
-			newInfo.LastChanged = old.LastChanged
-		}
-		s.chains[chainID] = newInfo
+		s.applyChainUpdate(chainID, old, newInfo, cs, now)
 	}
 
 	// Disable registry chains that disappeared from the new snapshot.
@@ -272,6 +235,58 @@ func (s *Store) SetOverrides(ov *OverrideSet) {
 		}
 		s.chains[chainID] = newInfo
 	}
+}
+
+// ChannelsFor returns all IBC channels where the given chain name (registry
+// chain_name, not chain_id) is one of the two sides.
+func (s *Store) ChannelsFor(chainName string) []IBCChannel {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []IBCChannel
+	for i := range s.ibcChannels {
+		if _, _, _, ok := s.ibcChannels[i].ChannelFor(chainName); ok {
+			out = append(out, s.ibcChannels[i])
+		}
+	}
+	return out
+}
+
+// applyChainUpdate diffs old vs newInfo under the field-change policy and
+// records hot-reload, warn, and freeze actions into cs. Must be called with s.mu held.
+func (s *Store) applyChainUpdate(chainID string, old, newInfo *ChainInfo, cs *ChangeSet, now time.Time) {
+	hasChanged := false
+	for _, field := range classifiableFields {
+		ov, nv, changed := fieldValues(old, newInfo, field)
+		if !changed {
+			// Registry reverted to the applied value — clear any stale pending entry.
+			delete(s.pending, chainID+":"+field)
+			continue
+		}
+		hasChanged = true
+		fc := FieldChange{ChainID: chainID, Field: field, OldValue: ov, NewValue: nv}
+		switch classify(field) {
+		case FieldPolicyHotReload:
+			cs.HotReloaded = append(cs.HotReloaded, fc)
+		case FieldPolicyWarn:
+			cs.Warned = append(cs.Warned, fc)
+		case FieldPolicyFreeze:
+			cs.Frozen = append(cs.Frozen, fc)
+			key := chainID + ":" + field
+			s.pending[key] = &PendingChange{
+				ChainID: chainID, Field: field,
+				OldValue: ov, NewValue: nv,
+				DetectedAt: now, Source: SourceLive,
+			}
+			// Restore old value: Freeze means do not apply until accepted.
+			applyAcceptedField(newInfo, field, ov) //nolint:errcheck // only freeze fields passed, all handled
+		}
+	}
+	if hasChanged {
+		newInfo.LastChanged = now
+	} else {
+		newInfo.LastChanged = old.LastChanged
+	}
+	s.chains[chainID] = newInfo
 }
 
 // classifiableFields is the ordered list of field paths that UpdateLive diffs
