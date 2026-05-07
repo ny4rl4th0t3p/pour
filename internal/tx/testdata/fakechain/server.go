@@ -3,6 +3,7 @@ package fakechain
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
 
@@ -36,9 +37,10 @@ type Config struct {
 	BroadcastCode   uint32 // non-zero → error response
 
 	// GetTx: confirmed after ConfirmAfter calls (0 = immediately)
-	ConfirmAfter int
-	TxHeight     int64
-	GetTxGasUsed int64 // gas_used in the confirmed TxResponse
+	ConfirmAfter   int
+	TxHeight       int64
+	GetTxGasUsed   int64  // gas_used in the confirmed TxResponse
+	GetTxPacketSeq uint64 // if non-zero, inject a send_packet log with this sequence
 }
 
 // Start registers the fake servers, starts a bufconn listener, and returns a
@@ -134,12 +136,22 @@ func (f *fakeTxSvc) GetTx(_ context.Context, req *txv1beta1.GetTxRequest) (*txv1
 	if f.getTxCalls <= f.cfg.ConfirmAfter {
 		return nil, status.Error(codes.NotFound, "not yet confirmed")
 	}
-	return &txv1beta1.GetTxResponse{
-		TxResponse: &abciv1beta1.TxResponse{
-			Txhash:  f.cfg.BroadcastTxHash,
-			Height:  f.cfg.TxHeight,
-			GasUsed: f.cfg.GetTxGasUsed,
-			Code:    0,
-		},
-	}, nil
+	txResp := &abciv1beta1.TxResponse{
+		Txhash:  f.cfg.BroadcastTxHash,
+		Height:  f.cfg.TxHeight,
+		GasUsed: f.cfg.GetTxGasUsed,
+		Code:    0,
+	}
+	if f.cfg.GetTxPacketSeq != 0 {
+		txResp.Logs = []*abciv1beta1.ABCIMessageLog{{
+			Events: []*abciv1beta1.StringEvent{{
+				Type: "send_packet",
+				Attributes: []*abciv1beta1.Attribute{{
+					Key:   "packet_sequence",
+					Value: fmt.Sprintf("%d", f.cfg.GetTxPacketSeq),
+				}},
+			}},
+		}}
+	}
+	return &txv1beta1.GetTxResponse{TxResponse: txResp}, nil
 }

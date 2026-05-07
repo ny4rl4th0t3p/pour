@@ -2,11 +2,12 @@ package tx
 
 import "context"
 
-// MsgTypeSend and MsgTypeMultiSend are the gas cache discriminator values used
-// to keep MsgSend and MsgMultiSend gas profiles separate.
+// MsgType* constants are the gas cache discriminator values used to keep gas
+// profiles for different message types separate.
 const (
 	MsgTypeSend      = "send"
 	MsgTypeMultiSend = "multisend"
+	MsgTypeTransfer  = "transfer"
 )
 
 // Coin is a (denom, amount) pair. Amount is a decimal integer string, e.g. "1000000".
@@ -62,6 +63,25 @@ type BroadcastResult struct {
 	TxHash  string
 	Height  int64
 	GasUsed uint64
+}
+
+// TransferRequest is the input to Client.BuildAndBroadcastTransfer.
+type TransferRequest struct {
+	KeyIndex         uint32
+	SourcePort       string // typically "transfer"
+	SourceChannel    string // e.g. "channel-0"
+	Token            Coin
+	ReceiverAddress  string // address on the destination chain
+	TimeoutTimestamp uint64 // nanoseconds since unix epoch; required
+	Memo             string
+}
+
+// TransferResult is the output of Client.BuildAndBroadcastTransfer.
+type TransferResult struct {
+	TxHash         string
+	Height         int64
+	GasUsed        uint64
+	PacketSequence uint64 // 0 if not parseable from tx events
 }
 
 // Account holds the on-chain account state needed for signing.
