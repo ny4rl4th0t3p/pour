@@ -21,3 +21,11 @@ type ChainDetailResponse struct {
 type InfoResponse struct {
 	IBCChannelCount int `json:"ibc_channel_count"`
 }
+
+// PourResponse mirrors pourapi.PourResponse for black-box HTTP assertions.
+type PourResponse struct {
+	DripID int64  `json:"drip_id"`
+	Status string `json:"status"`
+	Amount string `json:"amount"`
+	TxHash string `json:"tx_hash,omitempty"`
+}

@@ -60,6 +60,22 @@ func StartPour(t *testing.T, cfg PourConfig) *PourServer {
 	return &PourServer{BaseURL: "http://127.0.0.1:18080", cmd: cmd}
 }
 
+// Pour calls POST /v1/pour and decodes the response.
+func (s *PourServer) Pour(t *testing.T, chainID, address string) PourResponse {
+	t.Helper()
+	body := fmt.Sprintf(`{"chain_id":%q,"address":%q}`, chainID, address)
+	resp, err := http.Post(s.BaseURL+"/v1/pour", "application/json", strings.NewReader(body)) //nolint:noctx
+	if err != nil {
+		t.Fatalf("POST /v1/pour: %v", err)
+	}
+	defer resp.Body.Close()
+	var out PourResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode pour response: %v", err)
+	}
+	return out
+}
+
 // GetChainDetail calls GET /v1/chains/{chainID} and decodes the response.
 func (s *PourServer) GetChainDetail(t *testing.T, chainID string) ChainDetailResponse {
 	t.Helper()
@@ -141,6 +157,9 @@ chains:
     drip:
       anonymous: "1000000uosmo"
       max_per_address_per_day: "10000000uosmo"
+    ibc:
+      source_chain_id: simapp-a-1
+      timeout: "30s"
 `, registryURL)
 	if err := os.WriteFile(filepath.Join(dir, "chains.yml"), []byte(content), 0600); err != nil {
 		t.Fatalf("write chains.yml: %v", err)

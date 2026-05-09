@@ -13,11 +13,15 @@ import (
 //   - /_IBC/simapp-a-simapp-b.json — one synthetic ICS20 channel (channel-0 ↔ channel-0)
 //
 // Returns the server base URL.
-func StartMockRegistry(t *testing.T, chainA *SimappChain) string {
+func StartMockRegistry(t *testing.T, chainA, chainB *SimappChain) string {
 	t.Helper()
 
+	chainBGRPC := "127.0.0.1:19090"
+	if chainB != nil {
+		chainBGRPC = chainB.GRPCAddr
+	}
 	chainAJSON := chainJSON("simapp-a", "simapp-a-1", "cosmos", "stake", chainA.GRPCAddr)
-	chainBJSON := chainJSON("simapp-b", "simapp-b-1", "osmo", "uosmo", "127.0.0.1:19090")
+	chainBJSON := chainJSON("simapp-b", "simapp-b-1", "osmo", "uosmo", chainBGRPC)
 	ibcJSON := ibcFileJSON("simapp-a", "simapp-b")
 
 	mux := http.NewServeMux()
