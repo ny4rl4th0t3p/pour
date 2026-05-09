@@ -57,25 +57,38 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 	t.Helper()
 
 	const home = "/root/.simapp"
+
+	// simapp v0.53 hardcodes "stake" as the default bond denom regardless of the
+	// chain's native gas token. When cfg.Denom != "stake" (e.g. chain B uses "uosmo"),
+	// fund the validator with both denoms so it can bond AND pay gas.
+	validatorGenCoins := "10000000000stake"
+	if cfg.Denom != "stake" {
+		validatorGenCoins += ",10000000000" + cfg.Denom
+	}
+	faucetGenCoins := "1000000000stake"
+	if cfg.Denom != "stake" {
+		faucetGenCoins += ",1000000000" + cfg.Denom
+	}
+
 	initScript := fmt.Sprintf(`
 		simd init test --chain-id %[2]s --home %[1]s &&
 		simd keys add validator --keyring-backend test --home %[1]s &&
 		simd genesis add-genesis-account \
 		  $(simd keys show validator -a --keyring-backend test --home %[1]s) \
-		  10000000000%[3]s --home %[1]s &&
-		echo %[4]q | simd keys add pour-faucet --recover --keyring-backend test --home %[1]s &&
+		  %[3]s --home %[1]s &&
+		echo %[5]q | simd keys add pour-faucet --recover --keyring-backend test --home %[1]s &&
 		simd genesis add-genesis-account \
 		  $(simd keys show pour-faucet -a --keyring-backend test --home %[1]s) \
-		  1000000000%[3]s --home %[1]s &&
-		simd genesis gentx validator 1000000%[3]s \
+		  %[4]s --home %[1]s &&
+		simd genesis gentx validator 1000000stake \
 		  --chain-id %[2]s --keyring-backend test --home %[1]s &&
 		simd genesis collect-gentxs --home %[1]s &&
 		simd start --home %[1]s \
 		  --rpc.laddr tcp://0.0.0.0:26657 \
 		  --grpc.address 0.0.0.0:9090 \
 		  --api.enable --api.address tcp://0.0.0.0:1317 \
-		  --minimum-gas-prices 0.025%[3]s
-	`, home, cfg.ChainID, cfg.Denom, TestMnemonic)
+		  --minimum-gas-prices 0.025%[6]s
+	`, home, cfg.ChainID, validatorGenCoins, faucetGenCoins, TestMnemonic, cfg.Denom)
 
 	req := testcontainers.ContainerRequest{
 		Image:        SimappImage,
