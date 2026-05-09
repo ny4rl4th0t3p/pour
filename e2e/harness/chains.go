@@ -2,11 +2,14 @@ package harness
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +21,11 @@ const (
 	// SimappImage is the official cosmos/simapp Docker image.
 	// Pin to a specific tag for reproducibility; verify genesis CLI on first run.
 	SimappImage = "ghcr.io/cosmos/simapp:v0.53"
+
+	// PourFaucetCosmosAddr is the cosmos-prefix address of pour's key-0 derived from
+	// TestMnemonic (m/44'/118'/0'/0/0). Funded in genesis by StartSimapp so that pour
+	// can sign MsgTransfer on chain A in e2e tests.
+	PourFaucetCosmosAddr = "cosmos15yk64u7zc9g9k2yr2wmzeva5qgwxps6yxj00e7"
 )
 
 // SimappConfig parameterises a simapp chain for use in e2e tests.
@@ -55,6 +63,10 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 		simd genesis add-genesis-account \
 		  $(simd keys show validator -a --keyring-backend test --home %[1]s) \
 		  10000000000%[3]s --home %[1]s &&
+		echo %[4]q | simd keys add pour-faucet --recover --keyring-backend test --home %[1]s &&
+		simd genesis add-genesis-account \
+		  $(simd keys show pour-faucet -a --keyring-backend test --home %[1]s) \
+		  1000000000%[3]s --home %[1]s &&
 		simd genesis gentx validator 1000000%[3]s \
 		  --chain-id %[2]s --keyring-backend test --home %[1]s &&
 		simd genesis collect-gentxs --home %[1]s &&
@@ -63,7 +75,7 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 		  --grpc.address 0.0.0.0:9090 \
 		  --api.enable --api.address tcp://0.0.0.0:1317 \
 		  --minimum-gas-prices 0.025%[3]s
-	`, home, cfg.ChainID, cfg.Denom)
+	`, home, cfg.ChainID, cfg.Denom, TestMnemonic)
 
 	req := testcontainers.ContainerRequest{
 		Image:        SimappImage,
@@ -161,6 +173,14 @@ func (s *SimappChain) WaitForBalance(t *testing.T, address, denom string, minAmo
 		time.Sleep(2 * time.Second)
 	}
 	t.Fatalf("WaitForBalance: %s on %s never reached %d within 60s", denom, s.cfg.ChainID, minAmount)
+}
+
+// IBCDenom computes the IBC denomination for a token transferred over a single hop.
+// Result is "ibc/" + uppercase hex SHA256 of "<portID>/<channelID>/<baseDenom>".
+func IBCDenom(portID, channelID, baseDenom string) string {
+	path := portID + "/" + channelID + "/" + baseDenom
+	hash := sha256.Sum256([]byte(path))
+	return "ibc/" + strings.ToUpper(hex.EncodeToString(hash[:]))
 }
 
 // CreateNetwork creates a Docker bridge network for the test and registers cleanup.

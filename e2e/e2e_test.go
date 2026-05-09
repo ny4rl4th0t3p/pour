@@ -15,7 +15,7 @@ import (
 func TestIBCDiscovery(t *testing.T) {
 	ctx := context.Background()
 
-	chainA := harness.StartChainA(t, ctx)
+	chainA := harness.StartSimapp(t, ctx, harness.SimappConfigA)
 	registryURL := harness.StartMockRegistry(t, chainA, nil)
 	pour := harness.StartPour(t, harness.PourConfig{RegistryURL: registryURL})
 
@@ -29,4 +29,33 @@ func TestIBCDiscovery(t *testing.T) {
 
 	info := pour.GetInfo(t)
 	assert.Equal(t, 1, info.IBCChannelCount)
+}
+
+// TestIBCTransfer_HappyPath validates the full IBC drip path: pour receives a request
+// for an IBC-destination chain (simapp-b-1), issues MsgTransfer on chain A, and the
+// recipient receives the IBC-wrapped token on chain B.
+func TestIBCTransfer_HappyPath(t *testing.T) {
+	ctx := context.Background()
+
+	netName := harness.CreateNetwork(t, ctx)
+
+	cfgA := harness.SimappConfigA
+	cfgA.NetworkName = netName
+	chainA := harness.StartSimapp(t, ctx, cfgA)
+
+	cfgB := harness.SimappConfigB
+	cfgB.NetworkName = netName
+	chainB := harness.StartSimapp(t, ctx, cfgB)
+
+	harness.StartRelayer(t, ctx, chainA, chainB, netName)
+
+	registryURL := harness.StartMockRegistry(t, chainA, chainB)
+	pour := harness.StartPour(t, harness.PourConfig{RegistryURL: registryURL})
+
+	resp := pour.Pour(t, "simapp-b-1", harness.TestRecipientAddrOsmo)
+	require.Equal(t, "confirmed", resp.Status)
+	assert.NotEmpty(t, resp.TxHash)
+
+	ibcDenom := harness.IBCDenom("transfer", "channel-0", "stake")
+	chainB.WaitForBalance(t, harness.TestRecipientAddrOsmo, ibcDenom, 1_000_000)
 }

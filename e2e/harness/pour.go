@@ -17,6 +17,10 @@ import (
 // Never commit a real mnemonic.
 const TestMnemonic = "test test test test test test test test test test test junk"
 
+// TestRecipientAddrOsmo is the osmo-prefix bech32 address for pour's key-0 derived from
+// TestMnemonic (m/44'/118'/0'/0/0). Used as the recipient in IBC transfer e2e tests.
+const TestRecipientAddrOsmo = "osmo15yk64u7zc9g9k2yr2wmzeva5qgwxps6ywful0v"
+
 // PourConfig parameterises a StartPour call.
 type PourConfig struct {
 	RegistryURL string
@@ -155,8 +159,8 @@ chains:
   - chain_id: simapp-b-1
     enabled: true
     drip:
-      anonymous: "1000000uosmo"
-      max_per_address_per_day: "10000000uosmo"
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
     ibc:
       source_chain_id: simapp-a-1
       timeout: "30s"
