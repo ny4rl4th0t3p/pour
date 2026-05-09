@@ -16,7 +16,7 @@ func TestIBCDiscovery(t *testing.T) {
 	ctx := context.Background()
 
 	chainA := harness.StartChainA(t, ctx)
-	registryURL := harness.StartMockRegistry(t, chainA)
+	registryURL := harness.StartMockRegistry(t, chainA, nil)
 	pour := harness.StartPour(t, harness.PourConfig{RegistryURL: registryURL})
 
 	detail := pour.GetChainDetail(t, "simapp-a-1")
