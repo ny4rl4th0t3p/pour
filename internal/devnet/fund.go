@@ -80,7 +80,7 @@ func SelfFund(ctx context.Context, info *chainregistry.ChainInfo, funderMnemonic
 }
 
 // WaitForFunding logs pourAddr and polls it every 2 s until a positive denom
-// balance is detected or ctx is cancelled.
+// balance is detected or ctx is canceled.
 func WaitForFunding(ctx context.Context, querier BalanceQuerier, pourAddr, denom string) error {
 	slog.InfoContext(ctx, "devnet: pour address has no funds — send tokens to start serving requests",
 		"address", pourAddr, "denom", denom)

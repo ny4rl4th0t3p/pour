@@ -378,7 +378,13 @@ func signedDripRatioHigh(signedCoin, anonCoin string) bool {
 
 // runAutoFunding runs self-funding or wait-for-funding for the auto-mode chain.
 // It is called once after the manager has started and clients are available.
-func runAutoFunding(ctx context.Context, mgr *chain.Manager, rawClients map[string]*tx.Client, cfg *config.ChainConfig, fundMnemonic string) error {
+func runAutoFunding(
+	ctx context.Context,
+	mgr *chain.Manager,
+	rawClients map[string]*tx.Client,
+	cfg *config.ChainConfig,
+	fundMnemonic string,
+) error {
 	if len(cfg.FeeTokens) == 0 {
 		return nil
 	}
