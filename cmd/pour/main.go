@@ -184,6 +184,7 @@ func (c *ServeCmd) Run() error {
 		if err := runAutoFunding(ctx, mgr, rawClients, &chains.Chains[0], c.FundMnemonic); err != nil {
 			return err
 		}
+		mgr.StartDevnetWatcher(ctx, chains.Chains[0].ChainID, c.RPC)
 	}
 
 	broadcasters := buildBroadcasters(rawClients)
