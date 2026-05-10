@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -605,5 +606,73 @@ func TestPour_IBCRoute_NoChannel(t *testing.T) {
 	}
 	if !strings.Contains(errResp.Error, "no IBC channel") {
 		t.Errorf("error %q: want it to mention no IBC channel", errResp.Error)
+	}
+}
+
+func TestPour_IBCRoute_SourceNotActive(t *testing.T) {
+	// dest chain exists but its source chain is not registered — simulates a
+	// misconfigured or not-yet-started source chain.
+	src := &stubChainSource{
+		snaps: map[string]chain.ChainSnapshot{
+			"simapp-b-1": {
+				Info: &chainregistry.ChainInfo{
+					ChainID:      "simapp-b-1",
+					ChainName:    "simapp-b",
+					Bech32Prefix: "cosmos",
+					Slip44:       118,
+					KeyAlgo:      chainregistry.KeyAlgoSecp256k1,
+				},
+				Drip: chainregistry.DripPolicy{
+					Anonymous:           "1000000uosmo",
+					MaxPerAddressPerDay: "50000000uosmo",
+				},
+				IBCSourceChainID: "simapp-a-1",
+			},
+			// simapp-a-1 intentionally absent
+		},
+	}
+	h := New(Deps{
+		Source:    src,
+		Gate:      okAdmitter(),
+		DripStore: &mockDripStore{},
+		Version:   "test",
+	})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: got %d, want 503", w.Code)
+	}
+	var errResp pourapi.ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(errResp.Error, "source chain not active") {
+		t.Errorf("error %q: want it to mention source chain not active", errResp.Error)
+	}
+}
+
+func TestPour_IBCRoute_TransferError(t *testing.T) {
+	src := ibcTestSource(tx.TransferResult{}, errors.New("rpc unavailable"), true)
+	h := New(Deps{
+		Source:    src,
+		Gate:      okAdmitter(),
+		DripStore: &mockDripStore{},
+		Version:   "test",
+	})
+
+	w := httptest.NewRecorder()
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status: got %d, want 502", w.Code)
+	}
+	var errResp pourapi.ErrorResponse
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(errResp.Error, "IBC transfer failed") {
+		t.Errorf("error %q: want it to mention IBC transfer failed", errResp.Error)
 	}
 }
