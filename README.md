@@ -25,6 +25,8 @@ make build
 
 ## Quick start
 
+**Production / testnet**
+
 ```sh
 # Generate a fresh mnemonic for the faucet wallet
 pour keys generate
@@ -39,6 +41,23 @@ pour serve
 ```
 
 Fund the address derived from `POUR_MNEMONIC` on each chain before starting.
+
+**Local devnet (`ignite chain serve`, `simd start`, etc.)**
+
+```sh
+pour serve --auto --home ~/.simapp
+```
+
+Pour reads the genesis file from `--home`, infers the chain ID, bech32 prefix, and native denom
+automatically. A faucet mnemonic is generated on first run and persisted to `~/.pour/auto-mnemonic`
+for subsequent restarts. Fund the printed faucet address before requests are accepted, or pass
+`--fund-mnemonic` to self-fund from a genesis account:
+
+```sh
+pour serve --auto --home ~/.simapp --fund-mnemonic "word word word ..."
+```
+
+See [auto mode flags](#auto-mode-flags) for the full flag reference.
 
 The admin token resolves in order: `.pour-admin-token` file → `POUR_ADMIN_TOKEN` env var → auto-generate and write to
 `.pour-admin-token`. On a fresh start with neither set, the generated token is logged and written to `.pour-admin-token`
@@ -206,6 +225,22 @@ curl -X POST http://localhost:8080/v1/pour \
 | `POUR_NO_UI`       | `false`                 | Disable the embedded web UI.                                                                       |
 | `POUR_ADMIN_URL`   | `http://localhost:8080` | Base URL used by `pour chains` CLI subcommands.                                                    |
 
+### Auto mode flags
+
+These flags are only active when `--auto` is set. They do not affect normal `pour serve` operation.
+
+| Flag               | Default              | Description                                                                                   |
+|--------------------|----------------------|-----------------------------------------------------------------------------------------------|
+| `--home`           | *(required)*         | Chain home directory. Genesis file is read from `<home>/config/genesis.json`.                 |
+| `--grpc`           | `localhost:9090`     | gRPC endpoint of the running chain.                                                           |
+| `--rpc`            | `http://localhost:26657` | Tendermint RPC endpoint (used for devnet hot-reload detection).                           |
+| `--drip`           | `1000000<denom>`     | Drip amount per request (e.g. `500000uatom`). Defaults to 1 token at 6 decimal places.       |
+| `--fund-mnemonic`  | —                    | Mnemonic of a funded genesis account. When set, pour self-funds its address on startup.       |
+| `POUR_FUND_MNEMONIC` | —                  | Env-var equivalent of `--fund-mnemonic`.                                                      |
+
+The faucet mnemonic is auto-generated on first run and saved to `~/.pour/auto-mnemonic` (mode
+`0600`). On subsequent runs the same mnemonic is reloaded. Set `POUR_MNEMONIC` to override.
+
 ## HTTP API
 
 ```
@@ -342,8 +377,8 @@ make build && cd e2e && POUR_BIN=../pour go test -v -timeout 20m ./...
 - [x] **v0.3.0** — batch window, multiple distributor wallets, gRPC endpoint failover
 - [x] **v0.4.0** — PoW challenge, API keys, signed-wallet authentication
 - [x] **v0.5.0** — IBC plumbing
-- [ ] **v0.6.0** — IBC drips
-- [ ] **v0.7.0** — devnet tooling and local testing helpers
+- [x] **v0.6.0** — IBC drips
+- [ ] **v0.7.0** — local devnet auto-configure (`pour serve --auto --home`)
 - [ ] **v1.0.0** — stable: API and config schema frozen under semver guarantees
 
 ## License
