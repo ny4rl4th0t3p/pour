@@ -1,7 +1,6 @@
 package devnet
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -69,37 +68,5 @@ func TestBuildConfig_emptyDenom(t *testing.T) {
 	_, err := BuildConfig(info, "localhost:9090", "")
 	if err == nil {
 		t.Fatal("expected error for empty NativeDenom, got nil")
-	}
-}
-
-func TestGRPCFromRPC_derivesPort(t *testing.T) {
-	tests := []struct {
-		rpc      string
-		override string
-		want     string
-	}{
-		{"http://localhost:26657", "", "localhost:9090"},
-		{"http://192.168.1.5:26657", "", "192.168.1.5:9090"},
-		{"http://localhost:26657", "localhost:9191", "localhost:9191"},
-	}
-	for _, tc := range tests {
-		got, err := GRPCFromRPC(tc.rpc, tc.override)
-		if err != nil {
-			t.Errorf("GRPCFromRPC(%q, %q): %v", tc.rpc, tc.override, err)
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("GRPCFromRPC(%q, %q): got %q, want %q", tc.rpc, tc.override, got, tc.want)
-		}
-	}
-}
-
-func TestGRPCFromRPC_invalidURL(t *testing.T) {
-	_, err := GRPCFromRPC("://bad", "")
-	if err == nil {
-		t.Fatal("expected error for invalid URL, got nil")
-	}
-	if !strings.Contains(err.Error(), "parse") {
-		t.Errorf("error %q: want it to mention parse", err.Error())
 	}
 }

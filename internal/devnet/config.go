@@ -2,7 +2,6 @@ package devnet
 
 import (
 	"fmt"
-	"net/url"
 
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 )
@@ -52,25 +51,4 @@ func BuildConfig(info *GenesisInfo, grpcAddr, dripAmount string) (*config.Chains
 			},
 		},
 	}, nil
-}
-
-// GRPCFromRPC derives the gRPC address from an RPC URL and an optional
-// explicit gRPC override.
-//
-// If grpcOverride is non-empty, it is returned as-is.
-// Otherwise the host is extracted from rpcAddr and ":9090" is appended
-// (the Cosmos SDK default gRPC port).
-func GRPCFromRPC(rpcAddr, grpcOverride string) (string, error) {
-	if grpcOverride != "" {
-		return grpcOverride, nil
-	}
-	u, err := url.Parse(rpcAddr)
-	if err != nil {
-		return "", fmt.Errorf("devnet: parse rpc addr %q: %w", rpcAddr, err)
-	}
-	host := u.Hostname()
-	if host == "" {
-		return "", fmt.Errorf("devnet: could not extract host from rpc addr %q", rpcAddr)
-	}
-	return host + ":9090", nil
 }
