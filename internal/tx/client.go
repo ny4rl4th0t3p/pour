@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -165,9 +166,49 @@ func (c *Client) BuildAndBroadcastMulti(ctx context.Context, req BatchSendReques
 	return c.doSend(ctx, privKey, fromAddr, []*anypb.Any{msgAny}, MsgTypeMultiSend, len(req.Outputs))
 }
 
-// doSend runs the account-query → fee-estimate → sign → broadcast pipeline.
-// On codes.Unavailable it switches to the next healthy endpoint and retries once.
+// maxSequenceRetries is the number of sequence-mismatch retries before giving up.
+// Each retry waits sequenceRetryDelay for the competing tx to be committed.
+// 3 retries × 2 s = 6 s total, covering networks with block times up to ~5 s.
+const maxSequenceRetries = 3
+
+// sequenceRetryDelay is the pause between sequence-mismatch retries. Exposed as a
+// variable so unit tests can override it without sleeping.
+var sequenceRetryDelay = 2 * time.Second
+
+// doSend is the top-level send pipeline. It retries on ErrSequenceMismatch up to
+// maxSequenceRetries times, waiting sequenceRetryDelay between each attempt so the
+// competing tx has time to be committed before we re-query the account sequence.
+// Endpoint failover (codes.Unavailable) is handled inside attemptSendWithFailover.
 func (c *Client) doSend(
+	ctx context.Context,
+	privKey *keys.PrivKey,
+	fromAddr string,
+	msgs []*anypb.Any,
+	msgType string,
+	outputCount int,
+) (*BroadcastResult, error) {
+	for attempt := range maxSequenceRetries + 1 {
+		result, err := c.attemptSendWithFailover(ctx, privKey, fromAddr, msgs, msgType, outputCount)
+		if err == nil {
+			return result, nil
+		}
+		if !IsSequenceMismatch(err) || attempt == maxSequenceRetries {
+			return nil, err
+		}
+		if c.opts.Logger != nil {
+			c.opts.Logger.WarnContext(ctx, "tx: sequence mismatch, retrying",
+				"chain", c.chain.ChainID, "attempt", attempt+1)
+		}
+		if !sleepOrCancel(ctx, sequenceRetryDelay) {
+			return nil, ctx.Err()
+		}
+	}
+	panic("unreachable: doSend loop always returns on the final attempt")
+}
+
+// attemptSendWithFailover wraps attemptSend with one endpoint failover on
+// codes.Unavailable. Sequence errors are not handled here — doSend owns those.
+func (c *Client) attemptSendWithFailover(
 	ctx context.Context,
 	privKey *keys.PrivKey,
 	fromAddr string,
@@ -206,14 +247,16 @@ func (c *Client) attemptSend(
 	msgType string,
 	outputCount int,
 ) (*BroadcastResult, error) {
-	account, err := queryAccount(ctx, c.bundle.authSvc, fromAddr)
+	// Fee estimation (simulation) may advance the account sequence on some nodes.
+	// Query the account after estimation so we always sign with the current sequence.
+	estimate, err := estimateFee(ctx, c.bundle.txSvc, c.chain, msgs,
+		feeOpts{GasCache: c.opts.GasCache, OutputCount: outputCount, MsgType: msgType},
+		c.opts.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	estimate, err := estimateFee(ctx, c.bundle.txSvc, c.chain, msgs,
-		feeOpts{GasCache: c.opts.GasCache, OutputCount: outputCount, MsgType: msgType},
-		c.opts.Logger)
+	account, err := queryAccount(ctx, c.bundle.authSvc, fromAddr)
 	if err != nil {
 		return nil, err
 	}

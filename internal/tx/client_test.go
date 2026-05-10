@@ -134,6 +134,49 @@ func TestBuildAndBroadcastMulti_emptyOutputs(t *testing.T) {
 	}
 }
 
+func TestBuildAndBroadcast_sequenceMismatchRetry(t *testing.T) {
+	origInterval := confirmPollInterval
+	origDelay := sequenceRetryDelay
+	confirmPollInterval = 5 * time.Millisecond
+	sequenceRetryDelay = 5 * time.Millisecond
+	t.Cleanup(func() {
+		confirmPollInterval = origInterval
+		sequenceRetryDelay = origDelay
+	})
+
+	// First broadcast returns ABCI code 32 (wrong sequence); second succeeds.
+	// First account query returns seq 0; second returns seq 1 (as if refill tx committed).
+	conn := fakechain.Start(t, fakechain.Config{
+		Address:           testFromAddr,
+		AccountNumber:     1,
+		SequencesPerQuery: []uint64{0, 1},
+		GasUsed:           100_000,
+		BroadcastTxHash:   testTxHash,
+		BroadcastCodes:    []uint32{32, 0},
+		TxHeight:          50,
+		ConfirmAfter:      0,
+	})
+
+	chain := &chainregistry.ChainInfo{
+		ChainID:      "osmosis-1",
+		Bech32Prefix: "osmo",
+		Slip44:       118,
+		FeeTokens:    []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
+	}
+
+	result, err := newTestClient(t, conn, chain).BuildAndBroadcast(t.Context(), SendRequest{
+		KeyIndex:  0,
+		ToAddress: testToAddr,
+		Coins:     Coins{{Denom: "uosmo", Amount: "1000000"}},
+	})
+	if err != nil {
+		t.Fatalf("BuildAndBroadcast: expected retry to succeed, got %v", err)
+	}
+	if result.TxHash != testTxHash {
+		t.Errorf("TxHash: got %s, want %s", result.TxHash, testTxHash)
+	}
+}
+
 func TestBuildAndBroadcast_accountNotFound(t *testing.T) {
 	conn := fakechain.Start(t, fakechain.Config{
 		// Address deliberately does not match what the mnemonic derives.

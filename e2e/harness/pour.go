@@ -17,6 +17,11 @@ import (
 // Never commit a real mnemonic.
 const TestMnemonic = "test test test test test test test test test test test junk"
 
+// TestRecipientAddr is the cosmos-prefix bech32 address derived from TestMnemonic at
+// m/44'/118'/0'/0/0. It is the address pour uses to sign transactions (seeded in
+// genesis as the pour-faucet account) and the recipient in IBC transfer e2e tests.
+const TestRecipientAddr = "cosmos15yk64u7zc9g9k2yr2wmzeva5qgwxps6yxj00e7"
+
 // PourConfig parameterises a StartPour call.
 type PourConfig struct {
 	RegistryURL string
@@ -58,6 +63,22 @@ func StartPour(t *testing.T, cfg PourConfig) *PourServer {
 
 	waitForHealth(t, "http://127.0.0.1:18080/health")
 	return &PourServer{BaseURL: "http://127.0.0.1:18080", cmd: cmd}
+}
+
+// Pour calls POST /v1/pour and decodes the response.
+func (s *PourServer) Pour(t *testing.T, chainID, address string) PourResponse {
+	t.Helper()
+	body := fmt.Sprintf(`{"chain_id":%q,"address":%q}`, chainID, address)
+	resp, err := http.Post(s.BaseURL+"/v1/pour", "application/json", strings.NewReader(body)) //nolint:noctx
+	if err != nil {
+		t.Fatalf("POST /v1/pour: %v", err)
+	}
+	defer resp.Body.Close()
+	var out PourResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode pour response: %v", err)
+	}
+	return out
 }
 
 // GetChainDetail calls GET /v1/chains/{chainID} and decodes the response.
@@ -139,8 +160,11 @@ chains:
   - chain_id: simapp-b-1
     enabled: true
     drip:
-      anonymous: "1000000uosmo"
-      max_per_address_per_day: "10000000uosmo"
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
+    ibc:
+      source_chain_id: simapp-a-1
+      timeout: "30s"
 `, registryURL)
 	if err := os.WriteFile(filepath.Join(dir, "chains.yml"), []byte(content), 0600); err != nil {
 		t.Fatalf("write chains.yml: %v", err)

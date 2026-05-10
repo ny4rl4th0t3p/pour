@@ -54,7 +54,7 @@ func classifyChainError(resp *abciv1beta1.TxResponse) error {
 	case abciCodeInsufficientFee:
 		return ErrInsufficientFee
 	case abciCodeWrongSequence:
-		return ErrSequenceMismatch
+		return fmt.Errorf("%w: %s", ErrSequenceMismatch, resp.RawLog)
 	default:
 		return fmt.Errorf("tx: chain error code %d: %s", resp.Code, resp.RawLog)
 	}
