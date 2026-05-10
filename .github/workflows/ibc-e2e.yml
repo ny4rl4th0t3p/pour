@@ -1,6 +1,14 @@
 name: IBC E2E
 
 on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'e2e/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/ibc-e2e.yml'
   workflow_dispatch:
     inputs:
       ref:
@@ -34,6 +42,11 @@ jobs:
 
       - run: make proto-gen
       - run: make build
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+          working-directory: e2e
 
       - run: go test -v -timeout 20m ./...
         working-directory: e2e
