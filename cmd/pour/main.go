@@ -75,33 +75,42 @@ func (a *powAdapter) NewChallenge() (string, error) {
 	return a.issuer.NewChallenge(a.difficulty)
 }
 
-// buildAutoConfig resolves the mnemonic and builds an in-memory ChainsConfig
-// from the chain's genesis file. Called only when --auto is set.
-func (c *ServeCmd) buildAutoConfig() (mnemonic string, chains *config.ChainsConfig, err error) {
+// buildAutoConfig builds an in-memory ChainsConfig from the chain's genesis file
+// and returns a MnemonicFn that reads the mnemonic from disk on each call.
+// The mnemonic value is never captured in the closure — only the path is.
+func (c *ServeCmd) buildAutoConfig() (mnemonicFn func() string, chains *config.ChainsConfig, err error) {
 	if c.Home == "" {
-		return "", nil, errors.New("--home is required when using --auto (e.g. --home ~/.simapp)")
+		return nil, nil, errors.New("--home is required when using --auto (e.g. --home ~/.simapp)")
 	}
 
 	info, err := devnet.ParseGenesis(c.Home)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 	slog.Info("devnet: genesis parsed", "chain_id", info.ChainID, "prefix", info.Bech32Prefix, "denom", info.NativeDenom)
 
 	mnemonicPath, err := devnet.DefaultMnemonicPath()
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
-	mnemonic, err = devnet.LoadOrGenerate(mnemonicPath)
-	if err != nil {
-		return "", nil, err
+	// Ensure the file exists (generate if absent) at startup; capture only the path.
+	if _, err = devnet.LoadOrGenerate(mnemonicPath); err != nil {
+		return nil, nil, err
 	}
 
 	chains, err = devnet.BuildConfig(info, c.GRPC, c.Drip)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
-	return mnemonic, chains, nil
+	mnemonicFn = func() string {
+		m, loadErr := devnet.LoadOrGenerate(mnemonicPath)
+		if loadErr != nil {
+			slog.Error("devnet: reload mnemonic", "error", loadErr)
+			return ""
+		}
+		return m
+	}
+	return mnemonicFn, chains, nil
 }
 
 func (c *ServeCmd) Run() error {
@@ -111,20 +120,20 @@ func (c *ServeCmd) Run() error {
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: &level})))
 
-	var mnemonic string
+	var mnemonicFn func() string
 	var chains *config.ChainsConfig
 
 	if c.Auto {
 		var err error
-		mnemonic, chains, err = c.buildAutoConfig()
+		mnemonicFn, chains, err = c.buildAutoConfig()
 		if err != nil {
 			return err
 		}
 	} else {
-		mnemonic = os.Getenv("POUR_MNEMONIC")
-		if mnemonic == "" {
+		if os.Getenv("POUR_MNEMONIC") == "" {
 			return errors.New("POUR_MNEMONIC env var is required")
 		}
+		mnemonicFn = func() string { return os.Getenv("POUR_MNEMONIC") }
 		var err error
 		chains, err = config.LoadChains(c.ConfigFile)
 		if err != nil {
@@ -158,7 +167,7 @@ func (c *ServeCmd) Run() error {
 	mgr, err := chain.New(ctx, chain.Options{
 		Config:          chains,
 		GasCache:        gc,
-		MnemonicFn:      func() string { return mnemonic },
+		MnemonicFn:      mnemonicFn,
 		RegistryBaseURL: chains.Registry.BaseURL,
 		RefreshInterval: refreshInterval,
 	})
@@ -170,6 +179,13 @@ func (c *ServeCmd) Run() error {
 	mgr.StartRefreshLoop(ctx)
 
 	rawClients := mgr.Clients()
+
+	if c.Auto && len(chains.Chains) > 0 {
+		if err := runAutoFunding(ctx, mgr, rawClients, &chains.Chains[0], c.FundMnemonic); err != nil {
+			return err
+		}
+	}
+
 	broadcasters := buildBroadcasters(rawClients)
 
 	tokenStore, err := admin.NewTokenStore()
@@ -358,6 +374,38 @@ func signedDripRatioHigh(signedCoin, anonCoin string) bool {
 		return false
 	}
 	return sv.Cmp(new(big.Int).Mul(av, big.NewInt(100))) > 0
+}
+
+// runAutoFunding runs self-funding or wait-for-funding for the auto-mode chain.
+// It is called once after the manager has started and clients are available.
+func runAutoFunding(
+	ctx context.Context,
+	mgr *chain.Manager,
+	rawClients map[string]*tx.Client,
+	cfg *config.ChainConfig,
+	fundMnemonic string,
+) error {
+	if len(cfg.FeeTokens) == 0 {
+		return nil
+	}
+	denom := cfg.FeeTokens[0].Denom
+	pourClient, ok := rawClients[cfg.ChainID]
+	if !ok {
+		return fmt.Errorf("auto-fund: no client for chain %s", cfg.ChainID)
+	}
+	pourAddr, err := pourClient.AddressForKey(0)
+	if err != nil {
+		return fmt.Errorf("auto-fund: derive pour address: %w", err)
+	}
+
+	if fundMnemonic != "" {
+		snap, ok := mgr.GetActive(cfg.ChainID)
+		if !ok {
+			return fmt.Errorf("auto-fund: chain %s not active", cfg.ChainID)
+		}
+		return devnet.SelfFund(ctx, snap.Info, fundMnemonic, pourAddr, denom)
+	}
+	return devnet.WaitForFunding(ctx, pourClient, pourAddr, denom)
 }
 
 // lowGasPriceFn builds a gascache.LowGasPriceFn from the loaded config.
