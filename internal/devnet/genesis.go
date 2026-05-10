@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const defaultBech32Prefix = "cosmos"
+
 // GenesisInfo contains the fields extracted from a chain's genesis.json that
 // are needed to auto-configure pour in --auto mode.
 type GenesisInfo struct {
@@ -83,7 +85,7 @@ func ParseGenesis(homePath string) (*GenesisInfo, error) {
 
 	if info.Bech32Prefix == "" {
 		slog.Warn("devnet: could not infer bech32 prefix from genesis balances, defaulting to 'cosmos'")
-		info.Bech32Prefix = "cosmos"
+		info.Bech32Prefix = defaultBech32Prefix
 	}
 
 	return info, nil

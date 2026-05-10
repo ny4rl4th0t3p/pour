@@ -22,9 +22,10 @@ func BuildConfig(info *GenesisInfo, grpcAddr, dripAmount string) (*config.Chains
 	}
 	maxDrip := fmt.Sprintf("10000000%s", info.NativeDenom)
 
+	const defaultSlip44 = uint32(118)
 	enabled := true
 	prefix := info.Bech32Prefix
-	slip44 := uint32(118)
+	slip44 := defaultSlip44
 
 	return &config.ChainsConfig{
 		Chains: []config.ChainConfig{

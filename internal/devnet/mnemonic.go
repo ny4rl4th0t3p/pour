@@ -9,7 +9,11 @@ import (
 	"github.com/cosmos/go-bip39"
 )
 
-const mnemonicEntropyBits = 256
+const (
+	mnemonicEntropyBits = 256
+	mnemonicFileMode    = 0600
+	mnemonicDirMode     = 0700
+)
 
 // DefaultMnemonicPath returns the default path for the auto-generated mnemonic
 // file: ~/.pour/auto-mnemonic.
@@ -44,10 +48,10 @@ func LoadOrGenerate(path string) (string, error) {
 		return "", fmt.Errorf("devnet: generate mnemonic: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), mnemonicDirMode); err != nil {
 		return "", fmt.Errorf("devnet: create mnemonic dir: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(mnemonic+"\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(mnemonic+"\n"), mnemonicFileMode); err != nil {
 		return "", fmt.Errorf("devnet: write mnemonic to %s: %w", path, err)
 	}
 	return mnemonic, nil

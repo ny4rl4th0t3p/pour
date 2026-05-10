@@ -13,7 +13,7 @@ func writeGenesis(t *testing.T, dir, content string) {
 	if err := os.MkdirAll(cfgDir, 0755); err != nil {
 		t.Fatalf("mkdir config: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(cfgDir, "genesis.json"), []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfgDir, "genesis.json"), []byte(content), 0600); err != nil {
 		t.Fatalf("write genesis.json: %v", err)
 	}
 }

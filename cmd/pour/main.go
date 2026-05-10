@@ -57,12 +57,12 @@ type ServeCmd struct {
 
 	// Auto-configure mode: derive everything from a running local chain.
 	// Companion flags (--home etc.) are hidden from main help; see README for usage.
-	Auto         bool   `kong:"help='Auto-configure from a running local chain. Flags: --home (required), --rpc, --grpc, --drip, --fund-mnemonic.'"`
+	Auto         bool   `kong:"help='Auto-configure from a running local chain. See --home, --rpc, --grpc, --drip, --fund-mnemonic.'"`
 	Home         string `kong:"hidden,help='Chain home directory (e.g. ~/.simapp). Required with --auto.'"`
 	RPC          string `kong:"hidden,default='http://localhost:26657',help='Tendermint RPC address for --auto mode.'"`
 	GRPC         string `kong:"hidden,default='localhost:9090',help='gRPC address for --auto mode.'"`
 	Drip         string `kong:"hidden,help='Drip amount in --auto mode (e.g. 1000000uatom). Default: 1000000<denom>.'"`
-	FundMnemonic string `kong:"hidden,env='POUR_FUND_MNEMONIC',help='Mnemonic of a funded genesis account; used to self-fund the pour address on startup.'"`
+	FundMnemonic string `kong:"hidden,env='POUR_FUND_MNEMONIC',help='Mnemonic of a funded genesis account for self-funding on startup.'"`
 }
 
 // powAdapter adapts *abusepow.Issuer to handlers.PowIssuer with a fixed difficulty.
