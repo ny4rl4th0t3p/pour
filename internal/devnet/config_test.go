@@ -1,0 +1,105 @@
+package devnet
+
+import (
+	"strings"
+	"testing"
+)
+
+var baseInfo = &GenesisInfo{
+	ChainID:      "mychain-1",
+	Bech32Prefix: "cosmos",
+	NativeDenom:  "uatom",
+	Balances:     map[string][]Coin{},
+}
+
+func TestBuildConfig_standard(t *testing.T) {
+	cfg, err := BuildConfig(baseInfo, "localhost:9090", "500000uatom")
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	if len(cfg.Chains) != 1 {
+		t.Fatalf("chains: got %d, want 1", len(cfg.Chains))
+	}
+	ch := cfg.Chains[0]
+	if ch.ChainID != "mychain-1" {
+		t.Errorf("ChainID: got %q", ch.ChainID)
+	}
+	if !ch.Standalone {
+		t.Error("Standalone: want true")
+	}
+	if ch.Bech32Prefix == nil || *ch.Bech32Prefix != "cosmos" {
+		t.Errorf("Bech32Prefix: got %v", ch.Bech32Prefix)
+	}
+	if ch.Slip44 == nil || *ch.Slip44 != 118 {
+		t.Errorf("Slip44: got %v", ch.Slip44)
+	}
+	if ch.Endpoints == nil || len(ch.Endpoints.GRPC) != 1 || ch.Endpoints.GRPC[0] != "localhost:9090" {
+		t.Errorf("Endpoints.GRPC: got %v", ch.Endpoints)
+	}
+	if ch.Drip.Anonymous != "500000uatom" {
+		t.Errorf("Drip.Anonymous: got %q", ch.Drip.Anonymous)
+	}
+	if ch.Drip.MaxPerAddressPerDay != "10000000uatom" {
+		t.Errorf("Drip.MaxPerAddressPerDay: got %q", ch.Drip.MaxPerAddressPerDay)
+	}
+	if ch.BatchWindow != "0s" {
+		t.Errorf("BatchWindow: got %q, want 0s", ch.BatchWindow)
+	}
+	if ch.IBC.Timeout != "10m" {
+		t.Errorf("IBC.Timeout: got %q, want 10m", ch.IBC.Timeout)
+	}
+}
+
+func TestBuildConfig_defaultDrip(t *testing.T) {
+	cfg, err := BuildConfig(baseInfo, "localhost:9090", "")
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	ch := cfg.Chains[0]
+	if ch.Drip.Anonymous != "1000000uatom" {
+		t.Errorf("default drip: got %q, want 1000000uatom", ch.Drip.Anonymous)
+	}
+	if ch.Drip.MaxPerAddressPerDay != "10000000uatom" {
+		t.Errorf("default max drip: got %q", ch.Drip.MaxPerAddressPerDay)
+	}
+}
+
+func TestBuildConfig_emptyDenom(t *testing.T) {
+	info := &GenesisInfo{ChainID: "x-1", Bech32Prefix: "cosmos", NativeDenom: ""}
+	_, err := BuildConfig(info, "localhost:9090", "")
+	if err == nil {
+		t.Fatal("expected error for empty NativeDenom, got nil")
+	}
+}
+
+func TestGRPCFromRPC_derivesPort(t *testing.T) {
+	tests := []struct {
+		rpc      string
+		override string
+		want     string
+	}{
+		{"http://localhost:26657", "", "localhost:9090"},
+		{"http://192.168.1.5:26657", "", "192.168.1.5:9090"},
+		{"http://localhost:26657", "localhost:9191", "localhost:9191"},
+	}
+	for _, tc := range tests {
+		got, err := GRPCFromRPC(tc.rpc, tc.override)
+		if err != nil {
+			t.Errorf("GRPCFromRPC(%q, %q): %v", tc.rpc, tc.override, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("GRPCFromRPC(%q, %q): got %q, want %q", tc.rpc, tc.override, got, tc.want)
+		}
+	}
+}
+
+func TestGRPCFromRPC_invalidURL(t *testing.T) {
+	_, err := GRPCFromRPC("://bad", "")
+	if err == nil {
+		t.Fatal("expected error for invalid URL, got nil")
+	}
+	if !strings.Contains(err.Error(), "parse") {
+		t.Errorf("error %q: want it to mention parse", err.Error())
+	}
+}
