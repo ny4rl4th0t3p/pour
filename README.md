@@ -320,6 +320,21 @@ pour chains pin                emit config snippet to pin a field to its current
 pour chains refresh            trigger an immediate registry re-fetch
 ```
 
+## E2E tests
+
+The `e2e/` module runs integration tests against real Docker containers (ibc-go-simd chains and a
+Hermes relayer). Docker must be running. Supply the binary to test against via one of:
+
+| Variable           | Description                                                                                                                             |
+|--------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| `POUR_BIN`         | Path to a pre-built `pour` binary (e.g. `../pour` after `make build`).                                                                  |
+| `POUR_VERSION`     | Release tag to `go install` (e.g. `v0.5.0`). Mutually exclusive with `POUR_BIN`.                                                        |
+| `POUR_E2E_VERBOSE` | Set to any non-empty value to stream Hermes relayer logs to stderr. Off by default — only needed when debugging IBC handshake failures. |
+
+```sh
+make build && cd e2e && POUR_BIN=../pour go test -v -timeout 20m ./...
+```
+
 ## Roadmap
 
 - [x] **v0.1.0** — single-chain drip, embedded UI, IP rate limiting

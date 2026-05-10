@@ -17,9 +17,10 @@ import (
 // Never commit a real mnemonic.
 const TestMnemonic = "test test test test test test test test test test test junk"
 
-// TestRecipientAddrOsmo is the osmo-prefix bech32 address for pour's key-0 derived from
-// TestMnemonic (m/44'/118'/0'/0/0). Used as the recipient in IBC transfer e2e tests.
-const TestRecipientAddrOsmo = "osmo15yk64u7zc9g9k2yr2wmzeva5qgwxps6ywful0v"
+// TestRecipientAddr is the cosmos-prefix bech32 address derived from TestMnemonic at
+// m/44'/118'/0'/0/0. It is the address pour uses to sign transactions (seeded in
+// genesis as the pour-faucet account) and the recipient in IBC transfer e2e tests.
+const TestRecipientAddr = "cosmos15yk64u7zc9g9k2yr2wmzeva5qgwxps6yxj00e7"
 
 // PourConfig parameterises a StartPour call.
 type PourConfig struct {

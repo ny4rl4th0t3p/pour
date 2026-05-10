@@ -17,16 +17,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-const (
-	// SimappImage is the official cosmos/simapp Docker image.
-	// Pin to a specific tag for reproducibility; verify genesis CLI on first run.
-	SimappImage = "ghcr.io/cosmos/simapp:v0.53"
-
-	// PourFaucetCosmosAddr is the cosmos-prefix address of pour's key-0 derived from
-	// TestMnemonic (m/44'/118'/0'/0/0). Funded in genesis by StartSimapp so that pour
-	// can sign MsgTransfer on chain A in e2e tests.
-	PourFaucetCosmosAddr = "cosmos15yk64u7zc9g9k2yr2wmzeva5qgwxps6yxj00e7"
-)
+// SimappImage is the ibc-go simapp image — the cosmos/simapp image does not wire
+// IBC into its gRPC router; ibc-go-simd does. Binary and genesis CLI are identical.
+const SimappImage = "ghcr.io/cosmos/ibc-go-simd:v8.5.2"
 
 // SimappConfig parameterises a simapp chain for use in e2e tests.
 type SimappConfig struct {
@@ -39,16 +32,19 @@ type SimappConfig struct {
 
 var (
 	SimappConfigA = SimappConfig{ChainID: "simapp-a-1", ChainName: "simapp-a", Denom: "stake", Prefix: "cosmos"}
-	SimappConfigB = SimappConfig{ChainID: "simapp-b-1", ChainName: "simapp-b", Denom: "uosmo", Prefix: "osmo"}
+	// ibc-go-simd v8.5.2 (Cosmos SDK v0.50.x) always uses the "cosmos" bech32 prefix
+	// regardless of the chain's native gas denom. Both test chains share the same prefix.
+	SimappConfigB = SimappConfig{ChainID: "simapp-b-1", ChainName: "simapp-b", Denom: "uosmo", Prefix: "cosmos"}
 )
 
 // SimappChain holds the host-accessible endpoints of a running simapp container.
 type SimappChain struct {
-	GRPCAddr   string // "host:port" — external, for pour config
-	RESTAddr   string // "host:port" — external, cosmos API server (port 1317)
-	InternalIP string // Docker bridge IP — for relayer config
-	cfg        SimappConfig
-	container  testcontainers.Container
+	GRPCAddr  string // "host:port" — external, for pour config
+	RESTAddr  string // "host:port" — external, cosmos API server (port 1317)
+	ChainID   string // chain ID, also used as Docker DNS hostname on custom networks
+	GasDenom  string // native gas denom (e.g. "stake", "uosmo")
+	cfg       SimappConfig
+	container testcontainers.Container
 }
 
 // StartSimapp boots a parameterised simapp chain. The gRPC port is waited on before
@@ -58,7 +54,7 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 
 	const home = "/root/.simapp"
 
-	// simapp v0.53 hardcodes "stake" as the default bond denom regardless of the
+	// ibc-go-simd v8.5.2 hardcodes "stake" as the bond denom regardless of the
 	// chain's native gas token. When cfg.Denom != "stake" (e.g. chain B uses "uosmo"),
 	// fund the validator with both denoms so it can bond AND pay gas.
 	validatorGenCoins := "10000000000stake"
@@ -92,8 +88,10 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 
 	req := testcontainers.ContainerRequest{
 		Image:        SimappImage,
+		Hostname:     cfg.ChainID, // Docker DNS name on custom networks, used by Hermes
 		ExposedPorts: []string{"9090/tcp", "26657/tcp", "1317/tcp"},
-		Cmd:          []string{"sh", "-c", initScript},
+		Entrypoint:   []string{"sh", "-c"},
+		Cmd:          []string{initScript},
 		WaitingFor:   wait.ForListeningPort("9090/tcp").WithStartupTimeout(90 * time.Second),
 	}
 	if cfg.NetworkName != "" {
@@ -121,24 +119,37 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 	if err != nil {
 		t.Fatalf("%s: get rest port: %v", cfg.ChainID, err)
 	}
-	internalIP, err := container.ContainerIP(ctx)
-	if err != nil {
-		t.Fatalf("%s: get internal IP: %v", cfg.ChainID, err)
-	}
+	restAddr := host + ":" + restPort.Port()
+	waitForFirstBlock(t, restAddr, cfg.ChainID)
 
 	return &SimappChain{
-		GRPCAddr:   host + ":" + grpcPort.Port(),
-		RESTAddr:   host + ":" + restPort.Port(),
-		InternalIP: internalIP,
-		cfg:        cfg,
-		container:  container,
+		GRPCAddr:  host + ":" + grpcPort.Port(),
+		RESTAddr:  restAddr,
+		ChainID:   cfg.ChainID,
+		GasDenom:  cfg.Denom,
+		cfg:       cfg,
+		container: container,
 	}
 }
 
-// StartChainA boots a single simapp chain using SimappConfigA. Kept for backward
-// compatibility with existing tests.
-func StartChainA(t *testing.T, ctx context.Context) *SimappChain {
-	return StartSimapp(t, ctx, SimappConfigA)
+// waitForFirstBlock polls the chain's REST API until at least one block has been
+// committed. The gRPC port can open before the first block is committed, so without
+// this guard ExecIn calls (e.g. fundRelayer) fail with "invalid height".
+func waitForFirstBlock(t *testing.T, restAddr, chainID string) {
+	t.Helper()
+	url := fmt.Sprintf("http://%s/cosmos/base/tendermint/v1beta1/blocks/latest", restAddr)
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url) //nolint:noctx
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Fatalf("%s: no block produced within 60s", chainID)
 }
 
 // ExecIn runs a command inside the container.
@@ -194,6 +205,47 @@ func IBCDenom(portID, channelID, baseDenom string) string {
 	path := portID + "/" + channelID + "/" + baseDenom
 	hash := sha256.Sum256([]byte(path))
 	return "ibc/" + strings.ToUpper(hex.EncodeToString(hash[:]))
+}
+
+// WaitForChannel polls the chain's REST API until channelID on portID is in STATE_OPEN,
+// or fails the test after 120 s. Used after StartRelayer as a consistency check: the
+// IBC handshake runs before hermes start, but the channel state may not yet be visible
+// via REST when the container becomes ready.
+func (s *SimappChain) WaitForChannel(t *testing.T, channelID, portID string) {
+	t.Helper()
+	url := fmt.Sprintf("http://%s/ibc/core/channel/v1/channels", s.RESTAddr)
+	deadline := time.Now().Add(120 * time.Second)
+	for time.Now().Before(deadline) {
+		if ibcChannelIsOpen(url, channelID, portID) {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("WaitForChannel: %s/%s not STATE_OPEN on %s within 120s", portID, channelID, s.cfg.ChainID)
+}
+
+func ibcChannelIsOpen(url, channelID, portID string) bool {
+	resp, err := http.Get(url) //nolint:noctx
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Channels []struct {
+			ChannelID string `json:"channel_id"`
+			PortID    string `json:"port_id"`
+			State     string `json:"state"`
+		} `json:"channels"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&body) != nil {
+		return false
+	}
+	for _, ch := range body.Channels {
+		if ch.ChannelID == channelID && ch.PortID == portID && ch.State == "STATE_OPEN" {
+			return true
+		}
+	}
+	return false
 }
 
 // CreateNetwork creates a Docker bridge network for the test and registers cleanup.

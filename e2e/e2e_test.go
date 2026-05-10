@@ -52,10 +52,10 @@ func TestIBCTransfer_HappyPath(t *testing.T) {
 	registryURL := harness.StartMockRegistry(t, chainA, chainB)
 	pour := harness.StartPour(t, harness.PourConfig{RegistryURL: registryURL})
 
-	resp := pour.Pour(t, "simapp-b-1", harness.TestRecipientAddrOsmo)
+	resp := pour.Pour(t, "simapp-b-1", harness.TestRecipientAddr)
 	require.Equal(t, "confirmed", resp.Status)
 	assert.NotEmpty(t, resp.TxHash)
 
 	ibcDenom := harness.IBCDenom("transfer", "channel-0", "stake")
-	chainB.WaitForBalance(t, harness.TestRecipientAddrOsmo, ibcDenom, 1_000_000)
+	chainB.WaitForBalance(t, harness.TestRecipientAddr, ibcDenom, 1_000_000)
 }
