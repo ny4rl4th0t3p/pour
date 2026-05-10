@@ -77,7 +77,7 @@ func TestFetchBlockHeight_cancelledContext(t *testing.T) {
 	client := &http.Client{Timeout: time.Second}
 	_, err := fetchBlockHeight(ctx, client, srv.URL+"/status")
 	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+		t.Fatal("expected error for canceled context, got nil")
 	}
 }
 

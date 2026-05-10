@@ -101,7 +101,7 @@ type rpcStatusResponse struct {
 }
 
 func fetchBlockHeight(ctx context.Context, client *http.Client, url string) (int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
