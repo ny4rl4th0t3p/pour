@@ -22,6 +22,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/admin"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
 	"github.com/ny4rl4th0t3p/pour/internal/config"
+	"github.com/ny4rl4th0t3p/pour/internal/devnet"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	pourhttp "github.com/ny4rl4th0t3p/pour/internal/http"
 	"github.com/ny4rl4th0t3p/pour/internal/http/handlers"
@@ -53,6 +54,15 @@ func (*VersionCmd) Run() error {
 // ServeCmd starts the faucet HTTP server.
 type ServeCmd struct {
 	config.ServeConfig
+
+	// Auto-configure mode: derive everything from a running local chain.
+	// Companion flags (--home etc.) are hidden from main help; see README for usage.
+	Auto         bool   `kong:"help='Auto-configure from a running local chain. Flags: --home (required), --rpc, --grpc, --drip, --fund-mnemonic.'"`
+	Home         string `kong:"hidden,help='Chain home directory (e.g. ~/.simapp). Required with --auto.'"`
+	RPC          string `kong:"hidden,default='http://localhost:26657',help='Tendermint RPC address for --auto mode.'"`
+	GRPC         string `kong:"hidden,help='gRPC address for --auto mode (default: host:9090 derived from --rpc).'"`
+	Drip         string `kong:"hidden,help='Drip amount in --auto mode (e.g. 1000000uatom). Default: 1000000<denom>.'"`
+	FundMnemonic string `kong:"hidden,env='POUR_FUND_MNEMONIC',help='Mnemonic of a funded genesis account; used to self-fund the pour address on startup.'"`
 }
 
 // powAdapter adapts *abusepow.Issuer to handlers.PowIssuer with a fixed difficulty.
@@ -65,6 +75,40 @@ func (a *powAdapter) NewChallenge() (string, error) {
 	return a.issuer.NewChallenge(a.difficulty)
 }
 
+// buildAutoConfig resolves the mnemonic and builds an in-memory ChainsConfig
+// from the chain's genesis file. Called only when --auto is set.
+func (c *ServeCmd) buildAutoConfig() (mnemonic string, chains *config.ChainsConfig, err error) {
+	if c.Home == "" {
+		return "", nil, errors.New("--home is required when using --auto (e.g. --home ~/.simapp)")
+	}
+
+	info, err := devnet.ParseGenesis(c.Home)
+	if err != nil {
+		return "", nil, err
+	}
+	slog.Info("devnet: genesis parsed", "chain_id", info.ChainID, "prefix", info.Bech32Prefix, "denom", info.NativeDenom)
+
+	mnemonicPath, err := devnet.DefaultMnemonicPath()
+	if err != nil {
+		return "", nil, err
+	}
+	mnemonic, err = devnet.LoadOrGenerate(mnemonicPath)
+	if err != nil {
+		return "", nil, err
+	}
+
+	grpcAddr, err := devnet.GRPCFromRPC(c.RPC, c.GRPC)
+	if err != nil {
+		return "", nil, err
+	}
+
+	chains, err = devnet.BuildConfig(info, grpcAddr, c.Drip)
+	if err != nil {
+		return "", nil, err
+	}
+	return mnemonic, chains, nil
+}
+
 func (c *ServeCmd) Run() error {
 	var level slog.LevelVar
 	if err := level.UnmarshalText([]byte(c.LogLevel)); err != nil {
@@ -72,15 +116,27 @@ func (c *ServeCmd) Run() error {
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: &level})))
 
-	mnemonic := os.Getenv("POUR_MNEMONIC")
-	if mnemonic == "" {
-		return errors.New("POUR_MNEMONIC env var is required")
+	var mnemonic string
+	var chains *config.ChainsConfig
+
+	if c.Auto {
+		var err error
+		mnemonic, chains, err = c.buildAutoConfig()
+		if err != nil {
+			return err
+		}
+	} else {
+		mnemonic = os.Getenv("POUR_MNEMONIC")
+		if mnemonic == "" {
+			return errors.New("POUR_MNEMONIC env var is required")
+		}
+		var err error
+		chains, err = config.LoadChains(c.ConfigFile)
+		if err != nil {
+			return err
+		}
 	}
 
-	chains, err := config.LoadChains(c.ConfigFile)
-	if err != nil {
-		return err
-	}
 	logAbuseWarnings(chains)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
@@ -107,7 +163,7 @@ func (c *ServeCmd) Run() error {
 	mgr, err := chain.New(ctx, chain.Options{
 		Config:          chains,
 		GasCache:        gc,
-		MnemonicFn:      func() string { return os.Getenv("POUR_MNEMONIC") },
+		MnemonicFn:      func() string { return mnemonic },
 		RegistryBaseURL: chains.Registry.BaseURL,
 		RefreshInterval: refreshInterval,
 	})
