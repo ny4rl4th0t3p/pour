@@ -29,12 +29,20 @@ type Config struct {
 	Sequence      uint64
 	Address       string // must match the queried address
 
+	// SequencesPerQuery: if non-empty, successive Account calls return these sequences
+	// in order; the last entry is reused once the slice is exhausted.
+	SequencesPerQuery []uint64
+
 	// Simulate
 	GasUsed uint64 // 0 → return Unimplemented
 
 	// BroadcastTx
 	BroadcastTxHash string // returned on success
 	BroadcastCode   uint32 // non-zero → error response
+
+	// BroadcastCodes: if non-empty, successive BroadcastTx calls return these ABCI
+	// codes in order; the last entry is reused once the slice is exhausted.
+	BroadcastCodes []uint32
 
 	// GetTx: confirmed after ConfirmAfter calls (0 = immediately)
 	ConfirmAfter   int
@@ -78,17 +86,27 @@ func Start(t *testing.T, cfg Config) *grpc.ClientConn {
 
 type fakeAuth struct {
 	authv1beta1.UnimplementedQueryServer
-	cfg *Config
+	cfg          *Config
+	accountCalls int
 }
 
 func (f *fakeAuth) Account(_ context.Context, req *authv1beta1.QueryAccountRequest) (*authv1beta1.QueryAccountResponse, error) {
 	if req.Address != f.cfg.Address {
 		return nil, status.Errorf(codes.NotFound, "account not found: %s", req.Address)
 	}
+	seq := f.cfg.Sequence
+	if len(f.cfg.SequencesPerQuery) > 0 {
+		idx := f.accountCalls
+		if idx >= len(f.cfg.SequencesPerQuery) {
+			idx = len(f.cfg.SequencesPerQuery) - 1
+		}
+		seq = f.cfg.SequencesPerQuery[idx]
+		f.accountCalls++
+	}
 	ba := &authv1beta1.BaseAccount{
 		Address:       f.cfg.Address,
 		AccountNumber: f.cfg.AccountNumber,
-		Sequence:      f.cfg.Sequence,
+		Sequence:      seq,
 	}
 	b, err := proto.Marshal(ba)
 	if err != nil {
@@ -106,8 +124,9 @@ func (f *fakeAuth) Account(_ context.Context, req *authv1beta1.QueryAccountReque
 
 type fakeTxSvc struct {
 	txv1beta1.UnimplementedServiceServer
-	cfg        *Config
-	getTxCalls int
+	cfg            *Config
+	getTxCalls     int
+	broadcastCalls int
 }
 
 func (f *fakeTxSvc) Simulate(_ context.Context, _ *txv1beta1.SimulateRequest) (*txv1beta1.SimulateResponse, error) {
@@ -120,10 +139,19 @@ func (f *fakeTxSvc) Simulate(_ context.Context, _ *txv1beta1.SimulateRequest) (*
 }
 
 func (f *fakeTxSvc) BroadcastTx(_ context.Context, _ *txv1beta1.BroadcastTxRequest) (*txv1beta1.BroadcastTxResponse, error) {
+	code := f.cfg.BroadcastCode
+	if len(f.cfg.BroadcastCodes) > 0 {
+		idx := f.broadcastCalls
+		if idx >= len(f.cfg.BroadcastCodes) {
+			idx = len(f.cfg.BroadcastCodes) - 1
+		}
+		code = f.cfg.BroadcastCodes[idx]
+		f.broadcastCalls++
+	}
 	return &txv1beta1.BroadcastTxResponse{
 		TxResponse: &abciv1beta1.TxResponse{
 			Txhash: f.cfg.BroadcastTxHash,
-			Code:   f.cfg.BroadcastCode,
+			Code:   code,
 		},
 	}, nil
 }

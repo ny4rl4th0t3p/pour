@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/gascache"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
+	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
@@ -32,6 +34,27 @@ func newTestGasCache(t *testing.T) *gascache.Cache {
 func enabledPtr(v bool) *bool    { return &v }
 func strPtr(s string) *string    { return &s }
 func uint32Ptr(v uint32) *uint32 { return &v }
+
+// ibcDestChainCfg builds a minimal standalone IBC-destination ChainConfig for tests.
+// IBC-destination chains have no gRPC endpoints; the source chain handles broadcasting.
+func ibcDestChainCfg(chainID, sourceChainID string) config.ChainConfig {
+	return config.ChainConfig{
+		ChainID:      chainID,
+		Standalone:   true,
+		Enabled:      enabledPtr(true),
+		Bech32Prefix: strPtr("dest"),
+		Slip44:       uint32Ptr(118),
+		FeeTokens:    []config.FeeTokenConfig{{Denom: "udest"}},
+		Drip: config.DripConfig{
+			Anonymous:           "1000000udest",
+			MaxPerAddressPerDay: "50000000udest",
+		},
+		IBC: config.IBCConfig{
+			SourceChainID: sourceChainID,
+			Timeout:       "10m",
+		},
+	}
+}
 
 // standaloneChainCfg builds a minimal standalone ChainConfig for tests.
 // It uses localhost:9999 as the gRPC endpoint — gRPC dials lazily so no connection is attempted.
@@ -438,5 +461,89 @@ func TestManager_refreshLoop(t *testing.T) {
 
 	if _, ok := m.GetActive("mychain-1"); !ok {
 		t.Error("chain should remain active after refresh loop tick")
+	}
+}
+
+func TestManager_IBCTransfer_sourceNotFound(t *testing.T) {
+	m, err := New(context.Background(), Options{
+		Config:     &config.ChainsConfig{},
+		GasCache:   newTestGasCache(t),
+		MnemonicFn: func() string { return testMnemonic },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(m.Close)
+
+	_, err = m.IBCTransfer(context.Background(), "nonexistent-1", tx.TransferRequest{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not active") {
+		t.Errorf("error %q: want it to mention 'not active'", err.Error())
+	}
+}
+
+func TestManager_IBCTransfer_nilClient(t *testing.T) {
+	// dest-1 is an IBC-destination chain (client == nil); src-1 is the source.
+	cfg := &config.ChainsConfig{
+		Chains: []config.ChainConfig{
+			standaloneChainCfg("src-1", "src", true),
+			ibcDestChainCfg("dest-1", "src-1"),
+		},
+	}
+	m, err := New(context.Background(), Options{
+		Config:     cfg,
+		GasCache:   newTestGasCache(t),
+		MnemonicFn: func() string { return testMnemonic },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(m.Close)
+
+	// Passing dest-1 as the source chain ID must fail: it has no tx client.
+	_, err = m.IBCTransfer(context.Background(), "dest-1", tx.TransferRequest{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no tx client") {
+		t.Errorf("error %q: want it to mention 'no tx client'", err.Error())
+	}
+}
+
+func TestManager_IBCTransfer_routesToSource(t *testing.T) {
+	cfg := &config.ChainsConfig{
+		Chains: []config.ChainConfig{
+			standaloneChainCfg("src-1", "src", true),
+		},
+	}
+	m, err := New(context.Background(), Options{
+		Config:     cfg,
+		GasCache:   newTestGasCache(t),
+		MnemonicFn: func() string { return testMnemonic },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(m.Close)
+
+	// IBCTransfer routes to src-1's tx.Client. The client dials localhost:9999 which
+	// has no server, so we get a connection-level error — but NOT a manager guard error.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err = m.IBCTransfer(ctx, "src-1", tx.TransferRequest{
+		KeyIndex:         0,
+		SourcePort:       "transfer",
+		SourceChannel:    "channel-0",
+		Token:            tx.Coin{Denom: "utest", Amount: "1000000"},
+		ReceiverAddress:  "cosmos1test",
+		TimeoutTimestamp: 1,
+	})
+	if err == nil {
+		t.Fatal("expected connection error, got nil")
+	}
+	if strings.Contains(err.Error(), "not active") || strings.Contains(err.Error(), "no tx client") {
+		t.Errorf("error %q: routing did not reach the tx client (manager guard hit instead)", err.Error())
 	}
 }
