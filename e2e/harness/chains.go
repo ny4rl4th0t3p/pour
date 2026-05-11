@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,11 +25,13 @@ const SimappImage = "ghcr.io/cosmos/ibc-go-simd:v8.5.2"
 
 // SimappConfig parameterises a simapp chain for use in e2e tests.
 type SimappConfig struct {
-	ChainID     string
-	ChainName   string
-	Denom       string
-	Prefix      string
-	NetworkName string // optional; attach container to this Docker network
+	ChainID      string
+	ChainName    string
+	Denom        string
+	Prefix       string
+	NetworkName  string // optional; attach container to this Docker network
+	HostHomePath string // optional; bind-mounted as /root/.simapp so genesis is readable on host
+	Restartable  bool   // if true, simd runs in a loop so ResetChain can trigger a chain reset
 }
 
 var (
@@ -39,12 +43,14 @@ var (
 
 // SimappChain holds the host-accessible endpoints of a running simapp container.
 type SimappChain struct {
-	GRPCAddr  string // "host:port" — external, for pour config
-	RESTAddr  string // "host:port" — external, cosmos API server (port 1317)
-	ChainID   string // chain ID, also used as Docker DNS hostname on custom networks
-	GasDenom  string // native gas denom (e.g. "stake", "uosmo")
-	cfg       SimappConfig
-	container testcontainers.Container
+	GRPCAddr     string // "host:port" — external, for pour config
+	RESTAddr     string // "host:port" — external, cosmos API server (port 1317)
+	RPCAddr      string // "http://host:port" — Tendermint RPC (port 26657)
+	ChainID      string // chain ID, also used as Docker DNS hostname on custom networks
+	GasDenom     string // native gas denom (e.g. "stake", "uosmo")
+	HostHomePath string // host-side path of the bind-mounted /root/.simapp (if configured)
+	cfg          SimappConfig
+	container    testcontainers.Container
 }
 
 // StartSimapp boots a parameterised simapp chain. The gRPC port is waited on before
@@ -66,6 +72,20 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 		faucetGenCoins += ",1000000000" + cfg.Denom
 	}
 
+	startCmd := fmt.Sprintf(
+		`simd start --home %[1]s --rpc.laddr tcp://0.0.0.0:26657 --grpc.address 0.0.0.0:9090 --api.enable --api.address tcp://0.0.0.0:1317 --minimum-gas-prices 0.025%[2]s`,
+		home, cfg.Denom,
+	)
+	if cfg.Restartable {
+		startCmd = fmt.Sprintf(`while true; do
+			%s &
+			echo $! > /tmp/simd.pid
+			wait $!
+			simd comet unsafe-reset-all --home %s 2>/dev/null || simd tendermint unsafe-reset-all --home %s 2>/dev/null || true
+			sleep 1
+		done`, startCmd, home, home)
+	}
+
 	initScript := fmt.Sprintf(`
 		simd init test --chain-id %[2]s --home %[1]s &&
 		simd keys add validator --keyring-backend test --home %[1]s &&
@@ -79,12 +99,8 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 		simd genesis gentx validator 1000000stake \
 		  --chain-id %[2]s --keyring-backend test --home %[1]s &&
 		simd genesis collect-gentxs --home %[1]s &&
-		simd start --home %[1]s \
-		  --rpc.laddr tcp://0.0.0.0:26657 \
-		  --grpc.address 0.0.0.0:9090 \
-		  --api.enable --api.address tcp://0.0.0.0:1317 \
-		  --minimum-gas-prices 0.025%[6]s
-	`, home, cfg.ChainID, validatorGenCoins, faucetGenCoins, TestMnemonic, cfg.Denom)
+		%[6]s
+	`, home, cfg.ChainID, validatorGenCoins, faucetGenCoins, TestMnemonic, startCmd)
 
 	req := testcontainers.ContainerRequest{
 		Image:        SimappImage,
@@ -115,6 +131,10 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 	if err != nil {
 		t.Fatalf("%s: get grpc port: %v", cfg.ChainID, err)
 	}
+	rpcPort, err := container.MappedPort(ctx, "26657/tcp")
+	if err != nil {
+		t.Fatalf("%s: get rpc port: %v", cfg.ChainID, err)
+	}
 	restPort, err := container.MappedPort(ctx, "1317/tcp")
 	if err != nil {
 		t.Fatalf("%s: get rest port: %v", cfg.ChainID, err)
@@ -122,13 +142,33 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 	restAddr := host + ":" + restPort.Port()
 	waitForFirstBlock(t, restAddr, cfg.ChainID)
 
+	if cfg.HostHomePath != "" {
+		if err := os.MkdirAll(filepath.Join(cfg.HostHomePath, "config"), 0755); err != nil {
+			t.Fatalf("%s: mkdir config: %v", cfg.ChainID, err)
+		}
+		rc, err := container.CopyFileFromContainer(ctx, home+"/config/genesis.json")
+		if err != nil {
+			t.Fatalf("%s: copy genesis.json: %v", cfg.ChainID, err)
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatalf("%s: read genesis.json: %v", cfg.ChainID, err)
+		}
+		if err := os.WriteFile(filepath.Join(cfg.HostHomePath, "config", "genesis.json"), data, 0644); err != nil {
+			t.Fatalf("%s: write genesis.json: %v", cfg.ChainID, err)
+		}
+	}
+
 	return &SimappChain{
-		GRPCAddr:  host + ":" + grpcPort.Port(),
-		RESTAddr:  restAddr,
-		ChainID:   cfg.ChainID,
-		GasDenom:  cfg.Denom,
-		cfg:       cfg,
-		container: container,
+		GRPCAddr:     host + ":" + grpcPort.Port(),
+		RPCAddr:      "http://" + host + ":" + rpcPort.Port(),
+		RESTAddr:     restAddr,
+		ChainID:      cfg.ChainID,
+		GasDenom:     cfg.Denom,
+		HostHomePath: cfg.HostHomePath,
+		cfg:          cfg,
+		container:    container,
 	}
 }
 
@@ -137,24 +177,85 @@ func StartSimapp(t *testing.T, ctx context.Context, cfg SimappConfig) *SimappCha
 // this guard ExecIn calls (e.g. fundRelayer) fail with "invalid height".
 func waitForFirstBlock(t *testing.T, restAddr, chainID string) {
 	t.Helper()
+	waitForBlockHeight(t, restAddr, chainID, 1)
+}
+
+// waitForBlockHeight polls the chain's REST API until the latest committed block
+// is at or above minHeight.
+func waitForBlockHeight(t *testing.T, restAddr, chainID string, minHeight int64) {
+	t.Helper()
 	url := fmt.Sprintf("http://%s/cosmos/base/tendermint/v1beta1/blocks/latest", restAddr)
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url) //nolint:noctx
 		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return
+			var body struct {
+				Block struct {
+					Header struct {
+						Height string `json:"height"`
+					} `json:"header"`
+				} `json:"block"`
 			}
+			if jsonErr := json.NewDecoder(resp.Body).Decode(&body); jsonErr == nil {
+				if h, parseErr := strconv.ParseInt(body.Block.Header.Height, 10, 64); parseErr == nil && h >= minHeight {
+					resp.Body.Close()
+					return
+				}
+			}
+			resp.Body.Close()
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatalf("%s: no block produced within 60s", chainID)
+	t.Fatalf("%s: did not reach block height %d within 90s", chainID, minHeight)
+}
+
+// WaitForBlockHeight blocks until the chain's latest committed block is at or
+// above minHeight. Use before ResetChain to ensure the watcher has recorded a
+// meaningful prior height.
+func (s *SimappChain) WaitForBlockHeight(t *testing.T, minHeight int64) {
+	t.Helper()
+	waitForBlockHeight(t, s.RESTAddr, s.ChainID, minHeight)
 }
 
 // ExecIn runs a command inside the container.
 func (s *SimappChain) ExecIn(ctx context.Context, cmd []string) (int, io.Reader, error) {
 	return s.container.Exec(ctx, cmd)
+}
+
+// ResetChain kills the running simd process, so the restartable loop resets chain state
+// and restarts simd from height 0. Blocks until the chain has produced at least 2 blocks,
+// confirming it is actively running and not just at genesis. Only valid when cfg.Restartable is true.
+func (s *SimappChain) ResetChain(t *testing.T, ctx context.Context) {
+	t.Helper()
+	if !s.cfg.Restartable {
+		t.Fatal("ResetChain requires Restartable: true in SimappConfig")
+	}
+	if _, _, err := s.container.Exec(ctx, []string{"sh", "-c", "kill $(cat /tmp/simd.pid)"}); err != nil {
+		t.Fatalf("ResetChain %s: kill simd: %v", s.ChainID, err)
+	}
+	waitForBlockHeight(t, s.RESTAddr, s.ChainID, 3)
+}
+
+// SendTokens sends amount of the chain's gas denom from the validator account to toAddr,
+// then waits until toAddr holds at least 1 token.
+func (s *SimappChain) SendTokens(t *testing.T, ctx context.Context, toAddr, amount string) {
+	t.Helper()
+	cmd := []string{
+		"simd", "tx", "bank", "send", "validator", toAddr, amount,
+		"--keyring-backend", "test",
+		"--chain-id", s.ChainID,
+		"--yes",
+		"--gas", "auto",
+		"--gas-adjustment", "1.3",
+		fmt.Sprintf("--gas-prices=0.025%s", s.GasDenom),
+		"--home", "/root/.simapp",
+	}
+	code, out, err := s.ExecIn(ctx, cmd)
+	if err != nil || code != 0 {
+		output, _ := io.ReadAll(out)
+		t.Fatalf("SendTokens on %s: exit %d: %v\n%s", s.ChainID, code, err, output)
+	}
+	s.WaitForBalance(t, toAddr, s.GasDenom, 1)
 }
 
 // QueryBalance returns the amount of denom held by address according to the chain's
