@@ -244,7 +244,7 @@ func (r *restTransport) get(ctx context.Context, url string) (body []byte, statu
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", errRESTUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("%w: read body: %w", errRESTUnavailable, err)
@@ -262,7 +262,7 @@ func (r *restTransport) post(ctx context.Context, url string, payload []byte) (b
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", errRESTUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("%w: read body: %w", errRESTUnavailable, err)
