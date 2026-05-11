@@ -47,15 +47,14 @@ type CreateParams struct {
 
 // Key is an issued API key without its secret.
 type Key struct {
-	ID               string
-	Label            string
-	ChainScope       []string
-	PerChainDrips    map[string]string
-	RateLimitPerHour int
-	ExpiresAt        *time.Time
-	CreatedAt        time.Time
-	LastUsedAt       *time.Time
-	RevokedAt        *time.Time
+	ID               string            `json:"id"`
+	Label            string            `json:"label,omitempty"`
+	ChainScope       []string          `json:"chain_scope"`
+	PerChainDrips    map[string]string `json:"per_chain_drips,omitempty"`
+	RateLimitPerHour int               `json:"rate_limit_per_hour,omitempty"`
+	ExpiresAt        *time.Time        `json:"expires_at,omitempty"`
+	CreatedAt        time.Time         `json:"created_at"`
+	LastUsedAt       *time.Time        `json:"last_used_at,omitempty"`
 }
 
 // DripsForChain returns the per-chain drip override or "" to inherit drip.anonymous.

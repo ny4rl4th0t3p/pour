@@ -79,7 +79,8 @@ func (c *Chain) refillOne(ctx context.Context, keyIndex uint32, addr string) err
 }
 
 // refillAmount returns the top-up amount and whether a refill is needed.
-// topUp = threshold - balance when balance < threshold; zero otherwise.
+// Triggered when balance < threshold; fills to threshold × 10 to avoid
+// refilling after every drip.
 func refillAmount(balanceAmt, thresholdAmt string) (topUp string, needed bool) {
 	bal := new(big.Int)
 	thr := new(big.Int)
@@ -88,6 +89,7 @@ func refillAmount(balanceAmt, thresholdAmt string) (topUp string, needed bool) {
 	if bal.Cmp(thr) >= 0 {
 		return "", false
 	}
-	diff := new(big.Int).Sub(thr, bal)
+	target := new(big.Int).Mul(thr, big.NewInt(10))
+	diff := new(big.Int).Sub(target, bal)
 	return diff.String(), true
 }

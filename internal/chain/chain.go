@@ -113,7 +113,7 @@ func newChain(
 		}
 	}
 
-	refillThreshold, err := resolveRefillThreshold(cfg.RefillThreshold, drip.Anonymous, n)
+	refillThreshold, err := resolveRefillThreshold(cfg.RefillThreshold, drip.Anonymous)
 	if err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("chain %q: refill threshold: %w", info.ChainID, err)
@@ -153,8 +153,8 @@ func newChain(
 }
 
 // resolveRefillThreshold returns the configured threshold, or computes the default
-// (dripAnonymous × distributors × 10) when threshold is empty.
-func resolveRefillThreshold(threshold, dripAnonymous string, distributors int) (tx.Coin, error) {
+// (dripAnonymous × 10) when threshold is empty.
+func resolveRefillThreshold(threshold, dripAnonymous string) (tx.Coin, error) {
 	if threshold != "" {
 		return config.ParseCoin(threshold)
 	}
@@ -169,7 +169,7 @@ func resolveRefillThreshold(threshold, dripAnonymous string, distributors int) (
 	if _, ok := amount.SetString(coin.Amount, 10); !ok {
 		return tx.Coin{}, fmt.Errorf("invalid drip amount %q", coin.Amount)
 	}
-	amount.Mul(amount, big.NewInt(int64(distributors)*10))
+	amount.Mul(amount, big.NewInt(10))
 	return tx.Coin{Denom: coin.Denom, Amount: amount.String()}, nil
 }
 
