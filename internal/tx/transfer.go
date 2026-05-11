@@ -5,12 +5,44 @@ import (
 	"fmt"
 	"strconv"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/ny4rl4th0t3p/pour/internal/tx/internal/keys"
 	abciv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/base/abci/v1beta1"
+	basev1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/base/v1beta1"
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
+	transferv1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/ibc/applications/transfer/v1"
 )
+
+// buildMsgTransfer encodes a MsgTransfer as a proto Any ready for inclusion in TxBody.
+// timeout_height is always zero — we use timeout_timestamp only (IBC v2 requirement).
+func buildMsgTransfer(
+	senderAddress, receiverAddress string,
+	sourcePort, sourceChannel string,
+	token Coin,
+	timeoutTimestamp uint64,
+	memo string,
+) (*anypb.Any, error) {
+	msg := &transferv1.MsgTransfer{
+		SourcePort:       sourcePort,
+		SourceChannel:    sourceChannel,
+		Token:            &basev1beta1.Coin{Denom: token.Denom, Amount: token.Amount},
+		Sender:           senderAddress,
+		Receiver:         receiverAddress,
+		TimeoutTimestamp: timeoutTimestamp,
+		Memo:             memo,
+		// TimeoutHeight intentionally omitted (nil) — timeout_timestamp is sufficient.
+	}
+	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
+	if err != nil {
+		return nil, fmt.Errorf("tx: marshal MsgTransfer: %w", err)
+	}
+	return &anypb.Any{
+		TypeUrl: "/ibc.applications.transfer.v1.MsgTransfer",
+		Value:   b,
+	}, nil
+}
 
 // BuildAndBroadcastTransfer signs and broadcasts a single MsgTransfer.
 // Returns TransferResult with the IBC packet sequence extracted from the
@@ -49,9 +81,14 @@ func (c *Client) BuildAndBroadcastTransfer(ctx context.Context, req TransferRequ
 }
 
 // fetchPacketSequence queries GetTx for txHash and extracts the IBC packet
-// sequence from the committed tx logs. Returns 0 on any failure.
+// sequence from the committed tx logs. Returns 0 on any failure or when the
+// active transport is not gRPC (REST responses do not carry structured logs).
 func (c *Client) fetchPacketSequence(ctx context.Context, txHash string) uint64 {
-	resp, err := c.bundle.txSvc.GetTx(ctx, &txv1beta1.GetTxRequest{Hash: txHash})
+	gt, ok := c.active.(*grpcTransport)
+	if !ok {
+		return 0
+	}
+	resp, err := gt.txSvc.GetTx(ctx, &txv1beta1.GetTxRequest{Hash: txHash})
 	if err != nil || resp.GetTxResponse() == nil {
 		return 0
 	}

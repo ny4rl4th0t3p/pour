@@ -24,7 +24,7 @@ func newTestClient(t *testing.T, conn *grpc.ClientConn, chain *chainregistry.Cha
 	}
 	return &Client{
 		chain: chain,
-		bundle: connBundle{
+		active: &grpcTransport{
 			url:     "test",
 			conn:    conn,
 			txSvc:   txv1beta1.NewServiceClient(conn),
@@ -196,5 +196,164 @@ func TestBuildAndBroadcast_accountNotFound(t *testing.T) {
 	})
 	if !errors.Is(err, ErrAccountNotFound) {
 		t.Errorf("expected ErrAccountNotFound, got %v", err)
+	}
+}
+
+func TestBuildAndBroadcast_RESTOnly(t *testing.T) {
+	origInterval := confirmPollInterval
+	confirmPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { confirmPollInterval = origInterval })
+
+	baseURL := fakechain.StartREST(t, fakechain.Config{
+		Address:         testFromAddr,
+		AccountNumber:   1,
+		Sequence:        0,
+		GasUsed:         100_000,
+		BroadcastTxHash: testTxHash,
+		TxHeight:        55,
+	})
+
+	chain := &chainregistry.ChainInfo{
+		ChainID:      "osmosis-1",
+		Bech32Prefix: "osmo",
+		Slip44:       118,
+		FeeTokens:    []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
+	}
+	privKey, err := keys.DerivePrivKey(testMnemonic, chain.Slip44, 0)
+	if err != nil {
+		t.Fatalf("derive key: %v", err)
+	}
+
+	c := &Client{
+		chain:      chain,
+		active:     newRESTTransport(baseURL),
+		usingREST:  true,
+		cachedKeys: map[uint32]*keys.PrivKey{0: privKey},
+		opts:       Options{},
+	}
+
+	result, err := c.BuildAndBroadcast(t.Context(), SendRequest{
+		KeyIndex:  0,
+		ToAddress: testToAddr,
+		Coins:     Coins{{Denom: "uosmo", Amount: "1000000"}},
+	})
+	if err != nil {
+		t.Fatalf("BuildAndBroadcast: %v", err)
+	}
+	if result.TxHash != testTxHash {
+		t.Errorf("TxHash: got %s, want %s", result.TxHash, testTxHash)
+	}
+	if result.Height != 55 {
+		t.Errorf("Height: got %d, want 55", result.Height)
+	}
+}
+
+func TestBuildAndBroadcast_GRPCtoRESTFailover(t *testing.T) {
+	origInterval := confirmPollInterval
+	confirmPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { confirmPollInterval = origInterval })
+
+	// gRPC server that always returns codes.Unavailable for all calls.
+	grpcConn := fakechain.Start(t, fakechain.Config{Unavailable: true})
+
+	// REST server that handles the request successfully after failover.
+	restURL := fakechain.StartREST(t, fakechain.Config{
+		Address:         testFromAddr,
+		AccountNumber:   1,
+		Sequence:        0,
+		GasUsed:         100_000,
+		BroadcastTxHash: testTxHash,
+		TxHeight:        60,
+	})
+
+	chain := &chainregistry.ChainInfo{
+		ChainID:      "osmosis-1",
+		Bech32Prefix: "osmo",
+		Slip44:       118,
+		FeeTokens:    []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
+	}
+	privKey, err := keys.DerivePrivKey(testMnemonic, chain.Slip44, 0)
+	if err != nil {
+		t.Fatalf("derive key: %v", err)
+	}
+
+	// The grpcTransportFrom helper sets url = "test"; the pool must use the same sentinel.
+	c := &Client{
+		chain:      chain,
+		active:     grpcTransportFrom(grpcConn),
+		grpcPool:   NewEndpointPool([]string{"test"}),
+		restPool:   NewEndpointPool([]string{restURL}),
+		usingREST:  false,
+		cachedKeys: map[uint32]*keys.PrivKey{0: privKey},
+		opts:       Options{},
+	}
+
+	result, err := c.BuildAndBroadcast(t.Context(), SendRequest{
+		KeyIndex:  0,
+		ToAddress: testToAddr,
+		Coins:     Coins{{Denom: "uosmo", Amount: "1000000"}},
+	})
+	if err != nil {
+		t.Fatalf("BuildAndBroadcast: %v", err)
+	}
+	if result.TxHash != testTxHash {
+		t.Errorf("TxHash: got %s, want %s", result.TxHash, testTxHash)
+	}
+	if result.Height != 60 {
+		t.Errorf("Height: got %d, want 60", result.Height)
+	}
+}
+
+func TestBuildAndBroadcast_RESTSequenceMismatch(t *testing.T) {
+	origInterval := confirmPollInterval
+	origDelay := sequenceRetryDelay
+	confirmPollInterval = 5 * time.Millisecond
+	sequenceRetryDelay = 5 * time.Millisecond
+	t.Cleanup(func() {
+		confirmPollInterval = origInterval
+		sequenceRetryDelay = origDelay
+	})
+
+	// First broadcast returns ABCI code 32 (sequence mismatch); second succeeds.
+	// First account query returns seq 0; second returns seq 1 (after re-query).
+	baseURL := fakechain.StartREST(t, fakechain.Config{
+		Address:           testFromAddr,
+		AccountNumber:     1,
+		SequencesPerQuery: []uint64{0, 1},
+		GasUsed:           100_000,
+		BroadcastTxHash:   testTxHash,
+		BroadcastCodes:    []uint32{32, 0},
+		TxHeight:          65,
+	})
+
+	chain := &chainregistry.ChainInfo{
+		ChainID:      "osmosis-1",
+		Bech32Prefix: "osmo",
+		Slip44:       118,
+		FeeTokens:    []chainregistry.FeeToken{{Denom: "uosmo", AverageGasPrice: decimal.NewFromFloat(0.025)}},
+	}
+	privKey, err := keys.DerivePrivKey(testMnemonic, chain.Slip44, 0)
+	if err != nil {
+		t.Fatalf("derive key: %v", err)
+	}
+
+	c := &Client{
+		chain:      chain,
+		active:     newRESTTransport(baseURL),
+		usingREST:  true,
+		cachedKeys: map[uint32]*keys.PrivKey{0: privKey},
+		opts:       Options{},
+	}
+
+	result, err := c.BuildAndBroadcast(t.Context(), SendRequest{
+		KeyIndex:  0,
+		ToAddress: testToAddr,
+		Coins:     Coins{{Denom: "uosmo", Amount: "1000000"}},
+	})
+	if err != nil {
+		t.Fatalf("BuildAndBroadcast: expected retry to succeed, got %v", err)
+	}
+	if result.TxHash != testTxHash {
+		t.Errorf("TxHash: got %s, want %s", result.TxHash, testTxHash)
 	}
 }

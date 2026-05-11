@@ -42,7 +42,7 @@ type feeOpts struct {
 //  4. Hard-coded static defaults
 func estimateFee(
 	ctx context.Context,
-	txSvc txv1beta1.ServiceClient,
+	t transport,
 	chain *chainregistry.ChainInfo,
 	msgs []*anypb.Any,
 	opts feeOpts,
@@ -66,7 +66,7 @@ func estimateFee(
 	}
 
 	// 2. Simulate.
-	if estimate, ok, err := trySimulate(ctx, txSvc, chain, msgs); ok {
+	if estimate, ok, err := trySimulate(ctx, t, chain, msgs); ok {
 		return estimate, err
 	}
 
@@ -97,11 +97,11 @@ func estimateFee(
 	return Estimate{GasLimit: gas, Fee: fee, GasPriceAmount: gasPriceStr}, nil
 }
 
-// trySimulate calls Service/Simulate with a minimal placeholder tx.
+// trySimulate builds a placeholder tx and asks the transport to simulate it.
 // Returns (estimate, true, nil) on success, (zero, false, nil) if unavailable.
 func trySimulate(
 	ctx context.Context,
-	txSvc txv1beta1.ServiceClient,
+	t transport,
 	chain *chainregistry.ChainInfo,
 	msgs []*anypb.Any,
 ) (Estimate, bool, error) {
@@ -126,12 +126,12 @@ func trySimulate(
 		return Estimate{}, false, fmt.Errorf("tx: simulate marshal txraw: %w", err)
 	}
 
-	simResp, err := txSvc.Simulate(ctx, &txv1beta1.SimulateRequest{TxBytes: txBytes})
-	if err != nil || simResp.GasInfo == nil {
-		return Estimate{}, false, nil //nolint:nilerr // simulation is optional; any error means fall through to next strategy
+	gasUsedRaw, err := t.simulate(ctx, txBytes)
+	if err != nil || gasUsedRaw == 0 {
+		return Estimate{}, false, nil //nolint:nilerr // simulation is optional; 0 means fall through to next strategy
 	}
 
-	gasUsed := decimal.NewFromInt(int64(simResp.GasInfo.GasUsed))
+	gasUsed := decimal.NewFromInt(int64(gasUsedRaw))
 	gas := gasUsed.Mul(gasAdjustCold).Ceil().BigInt().Uint64()
 
 	denom := defaultFeeDenom

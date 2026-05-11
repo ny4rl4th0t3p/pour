@@ -2,23 +2,14 @@ package tx
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/ny4rl4th0t3p/pour/internal/tx/internal/keys"
-	authv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/auth/v1beta1"
-	bankv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1"
-	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
@@ -26,34 +17,27 @@ import (
 type Options struct {
 	GasCache     GasCache      // optional; read + write gas cache
 	Logger       *slog.Logger  // optional; defaults to slog.Default()
-	EndpointPool *EndpointPool // optional; enables endpoint failover
-}
-
-// connBundle holds an active gRPC connection and its derived service clients.
-type connBundle struct {
-	url     string
-	conn    *grpc.ClientConn
-	txSvc   txv1beta1.ServiceClient
-	authSvc authv1beta1.QueryClient
-	bankSvc bankv1beta1.QueryClient
+	EndpointPool *EndpointPool // optional; enables gRPC endpoint failover
 }
 
 // Client is a single-chain tx client. All private keys are pre-derived at construction;
 // the mnemonic is not retained after New returns.
 type Client struct {
 	chain      *chainregistry.ChainInfo
-	bundle     connBundle
-	pool       *EndpointPool
+	active     transport
+	grpcPool   *EndpointPool
+	restPool   *EndpointPool
+	usingREST  bool
 	cachedKeys map[uint32]*keys.PrivKey
 	opts       Options
 }
 
-// New derives private keys for all keyIndices eagerly, then dials the first healthy
-// endpoint. The mnemonic string is used only during New and is not stored in the
-// returned Client.
+// New derives private keys for all keyIndices eagerly, then connects using the first
+// available endpoint (gRPC preferred; REST if no gRPC). The mnemonic string is used
+// only during New and is not stored in the returned Client.
 func New(chain *chainregistry.ChainInfo, mnemonic string, keyIndices []uint32, opts Options) (*Client, error) {
-	if len(chain.Endpoints.GRPC) == 0 {
-		return nil, fmt.Errorf("tx: chain %q: no gRPC endpoints configured", chain.ChainID)
+	if len(chain.Endpoints.GRPC) == 0 && len(chain.Endpoints.REST) == 0 {
+		return nil, fmt.Errorf("tx: chain %q: no gRPC or REST endpoints configured", chain.ChainID)
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -68,49 +52,72 @@ func New(chain *chainregistry.ChainInfo, mnemonic string, keyIndices []uint32, o
 		cachedKeys[idx] = k
 	}
 
-	var initialURL string
+	var grpcPool *EndpointPool
+	if len(chain.Endpoints.GRPC) > 0 {
+		grpcURLs := make([]string, len(chain.Endpoints.GRPC))
+		for i, ep := range chain.Endpoints.GRPC {
+			grpcURLs[i] = ep.URL
+		}
+		grpcPool = NewEndpointPool(grpcURLs)
+	}
+	// Prefer the caller-supplied pool over the one built from chain info.
 	if opts.EndpointPool != nil {
-		u, ok := opts.EndpointPool.Next()
+		grpcPool = opts.EndpointPool
+	}
+
+	var restPool *EndpointPool
+	if len(chain.Endpoints.REST) > 0 {
+		restURLs := make([]string, len(chain.Endpoints.REST))
+		for i, ep := range chain.Endpoints.REST {
+			restURLs[i] = ep.URL
+		}
+		restPool = NewEndpointPool(restURLs)
+	}
+
+	var active transport
+	usingREST := false
+
+	if grpcPool != nil {
+		initialURL, ok := grpcPool.Next()
 		if !ok {
 			return nil, ErrNoEndpointAvailable
 		}
-		initialURL = u
+		b, err := newGRPCTransport(initialURL)
+		if err != nil {
+			return nil, fmt.Errorf("tx: dial %s: %w", initialURL, err)
+		}
+		active = b
 	} else {
-		initialURL = chain.Endpoints.GRPC[0].URL
-	}
-
-	b, err := newConnBundle(initialURL)
-	if err != nil {
-		return nil, fmt.Errorf("tx: dial %s: %w", initialURL, err)
+		if restPool == nil {
+			return nil, ErrNoEndpointAvailable
+		}
+		initialURL, ok := restPool.Next()
+		if !ok {
+			return nil, ErrNoEndpointAvailable
+		}
+		active = newRESTTransport(initialURL)
+		usingREST = true
 	}
 
 	return &Client{
 		chain:      chain,
-		bundle:     b,
-		pool:       opts.EndpointPool,
+		active:     active,
+		grpcPool:   grpcPool,
+		restPool:   restPool,
+		usingREST:  usingREST,
 		cachedKeys: cachedKeys,
 		opts:       opts,
 	}, nil
 }
 
-// Close releases the underlying gRPC connection.
+// Close releases the underlying connection.
 func (c *Client) Close() error {
-	return c.bundle.conn.Close()
+	return c.active.close()
 }
 
 // QueryBalance returns the balance of denom for address.
 func (c *Client) QueryBalance(ctx context.Context, address, denom string) (Coin, error) {
-	resp, err := c.bundle.bankSvc.Balance(ctx, &bankv1beta1.QueryBalanceRequest{
-		Address: address,
-		Denom:   denom,
-	})
-	if err != nil {
-		return Coin{}, fmt.Errorf("tx: query balance %s/%s: %w", address, denom, err)
-	}
-	if resp.Balance == nil {
-		return Coin{Denom: denom, Amount: "0"}, nil
-	}
-	return Coin{Denom: resp.Balance.Denom, Amount: resp.Balance.Amount}, nil
+	return c.active.queryBalance(ctx, address, denom)
 }
 
 // AddressForKey returns the bech32 address for the pre-derived key at keyIndex.
@@ -221,20 +228,50 @@ func (c *Client) attemptSendWithFailover(
 		if err == nil {
 			return result, nil
 		}
-		if !isUnavailable(err) || c.pool == nil {
+		if !isUnavailable(err) {
 			return nil, err
 		}
-		c.pool.MarkUnhealthy(c.bundle.url)
-		nextURL, ok := c.pool.Next()
+
+		// Mark the current endpoint unhealthy and try to get a next one.
+		currentURL := c.active.endpointURL()
+		activePool := c.grpcPool
+		if c.usingREST {
+			activePool = c.restPool
+		}
+		if activePool != nil {
+			activePool.MarkUnhealthy(currentURL)
+		}
+
+		nextURL, ok := "", false
+		if activePool != nil {
+			nextURL, ok = activePool.Next()
+		}
+
+		if !ok && !c.usingREST && c.restPool != nil {
+			// gRPC pool exhausted — fall over to REST.
+			nextURL, ok = c.restPool.Next()
+			if ok {
+				_ = c.active.close()
+				c.active = newRESTTransport(nextURL)
+				c.usingREST = true
+				continue
+			}
+		}
+
 		if !ok {
 			return nil, ErrNoEndpointAvailable
 		}
-		_ = c.bundle.conn.Close()
-		b, dialErr := newConnBundle(nextURL)
-		if dialErr != nil {
-			return nil, fmt.Errorf("tx: failover dial %s: %w", nextURL, dialErr)
+
+		_ = c.active.close()
+		if c.usingREST {
+			c.active = newRESTTransport(nextURL)
+		} else {
+			b, dialErr := newGRPCTransport(nextURL)
+			if dialErr != nil {
+				return nil, fmt.Errorf("tx: failover dial %s: %w", nextURL, dialErr)
+			}
+			c.active = b
 		}
-		c.bundle = b
 	}
 	return nil, ErrNoEndpointAvailable
 }
@@ -249,14 +286,14 @@ func (c *Client) attemptSend(
 ) (*BroadcastResult, error) {
 	// Fee estimation (simulation) may advance the account sequence on some nodes.
 	// Query the account after estimation so we always sign with the current sequence.
-	estimate, err := estimateFee(ctx, c.bundle.txSvc, c.chain, msgs,
+	estimate, err := estimateFee(ctx, c.active, c.chain, msgs,
 		feeOpts{GasCache: c.opts.GasCache, OutputCount: outputCount, MsgType: msgType},
 		c.opts.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	account, err := queryAccount(ctx, c.bundle.authSvc, fromAddr)
+	account, err := c.active.queryAccount(ctx, fromAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -266,47 +303,18 @@ func (c *Client) attemptSend(
 		return nil, err
 	}
 
-	txHash, err := broadcast(ctx, c.bundle.txSvc, txRaw)
+	txHash, err := broadcast(ctx, c.active, txRaw)
 	if err != nil {
 		c.recordFailure(ctx, msgType, err)
 		return nil, err
 	}
 
-	result, err := waitForConfirmation(ctx, c.bundle.txSvc, txHash)
+	result, err := c.active.waitForConfirmation(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
 	c.recordSuccess(ctx, msgType, result.GasUsed, outputCount, estimate)
 	return result, nil
-}
-
-// newConnBundle dials url and wraps the connection with service clients.
-func newConnBundle(url string) (connBundle, error) {
-	creds := grpc.WithTransportCredentials(insecure.NewCredentials())
-	if endpointIsTLS(url) {
-		creds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}))
-	}
-	conn, err := grpc.NewClient(url, creds)
-	if err != nil {
-		return connBundle{}, err
-	}
-	return connBundle{
-		url:     url,
-		conn:    conn,
-		txSvc:   txv1beta1.NewServiceClient(conn),
-		authSvc: authv1beta1.NewQueryClient(conn),
-		bankSvc: bankv1beta1.NewQueryClient(conn),
-	}, nil
-}
-
-// isUnavailable returns true if err or any error it wraps carries gRPC codes.Unavailable.
-func isUnavailable(err error) bool {
-	for e := err; e != nil; e = errors.Unwrap(e) {
-		if s, ok := status.FromError(e); ok && s.Code() == codes.Unavailable {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *Client) recordSuccess(ctx context.Context, msgType string, gasUsed uint64, outputCount int, est Estimate) {
