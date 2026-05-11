@@ -14,7 +14,7 @@ import (
 
 func grpcTransportForFee(t *testing.T, cfg fakechain.Config) *grpcTransport {
 	t.Helper()
-	return grpcTransportFrom(fakechain.Start(t, cfg))
+	return grpcTransportFrom(fakechain.StartGRPC(t, cfg))
 }
 
 func oneMsgSend(t *testing.T) []*anypb.Any {

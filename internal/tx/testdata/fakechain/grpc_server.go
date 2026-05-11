@@ -49,11 +49,17 @@ type Config struct {
 	TxHeight       int64
 	GetTxGasUsed   int64  // gas_used in the confirmed TxResponse
 	GetTxPacketSeq uint64 // if non-zero, inject a send_packet log with this sequence
+
+	// Unavailable: all gRPC calls return codes.Unavailable (for failover testing).
+	Unavailable bool
+
+	// BalanceAmount: amount returned by REST balance queries. "" → "0".
+	BalanceAmount string
 }
 
-// Start registers the fake servers, starts a bufconn listener, and returns a
+// StartGRPC registers the fake servers, starts a bufconn listener, and returns a
 // client connection. The server is stopped when t.Cleanup runs.
-func Start(t *testing.T, cfg Config) *grpc.ClientConn {
+func StartGRPC(t *testing.T, cfg Config) *grpc.ClientConn {
 	t.Helper()
 
 	lis := bufconn.Listen(bufSize)
@@ -91,6 +97,9 @@ type fakeAuth struct {
 }
 
 func (f *fakeAuth) Account(_ context.Context, req *authv1beta1.QueryAccountRequest) (*authv1beta1.QueryAccountResponse, error) {
+	if f.cfg.Unavailable {
+		return nil, status.Error(codes.Unavailable, "unavailable")
+	}
 	if req.Address != f.cfg.Address {
 		return nil, status.Errorf(codes.NotFound, "account not found: %s", req.Address)
 	}
@@ -130,6 +139,9 @@ type fakeTxSvc struct {
 }
 
 func (f *fakeTxSvc) Simulate(_ context.Context, _ *txv1beta1.SimulateRequest) (*txv1beta1.SimulateResponse, error) {
+	if f.cfg.Unavailable {
+		return nil, status.Error(codes.Unavailable, "unavailable")
+	}
 	if f.cfg.GasUsed == 0 {
 		return nil, status.Error(codes.Unimplemented, "simulate not configured")
 	}
@@ -139,6 +151,9 @@ func (f *fakeTxSvc) Simulate(_ context.Context, _ *txv1beta1.SimulateRequest) (*
 }
 
 func (f *fakeTxSvc) BroadcastTx(_ context.Context, _ *txv1beta1.BroadcastTxRequest) (*txv1beta1.BroadcastTxResponse, error) {
+	if f.cfg.Unavailable {
+		return nil, status.Error(codes.Unavailable, "unavailable")
+	}
 	code := f.cfg.BroadcastCode
 	if len(f.cfg.BroadcastCodes) > 0 {
 		idx := f.broadcastCalls
@@ -157,6 +172,9 @@ func (f *fakeTxSvc) BroadcastTx(_ context.Context, _ *txv1beta1.BroadcastTxReque
 }
 
 func (f *fakeTxSvc) GetTx(_ context.Context, req *txv1beta1.GetTxRequest) (*txv1beta1.GetTxResponse, error) {
+	if f.cfg.Unavailable {
+		return nil, status.Error(codes.Unavailable, "unavailable")
+	}
 	if req.Hash != f.cfg.BroadcastTxHash {
 		return nil, status.Errorf(codes.NotFound, "tx not found: %s", req.Hash)
 	}

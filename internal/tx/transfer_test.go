@@ -16,7 +16,7 @@ func TestBuildAndBroadcastTransfer_HappyPath(t *testing.T) {
 	confirmPollInterval = 5 * time.Millisecond
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		Address:         testFromAddr,
 		AccountNumber:   1,
 		Sequence:        0,
@@ -61,7 +61,7 @@ func TestBuildAndBroadcastTransfer_MissingPacketSeq(t *testing.T) {
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
 	// GetTxPacketSeq=0 means no send_packet log is injected.
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		Address:         testFromAddr,
 		GasUsed:         150_000,
 		BroadcastTxHash: testTxHash,

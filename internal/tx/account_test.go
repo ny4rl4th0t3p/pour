@@ -13,7 +13,7 @@ import (
 )
 
 func TestQueryAccount_baseAccount(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		Address:       testFromAddr,
 		AccountNumber: 42,
 		Sequence:      7,
@@ -33,7 +33,7 @@ func TestQueryAccount_baseAccount(t *testing.T) {
 }
 
 func TestQueryAccount_notFound(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{Address: testFromAddr})
+	conn := fakechain.StartGRPC(t, fakechain.Config{Address: testFromAddr})
 	client := authv1beta1.NewQueryClient(conn)
 
 	_, err := queryAccountGRPC(t.Context(), client, "osmo1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")

@@ -40,7 +40,7 @@ func TestBuildAndBroadcast_happyPath(t *testing.T) {
 	confirmPollInterval = 5 * time.Millisecond
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		Address:         testFromAddr,
 		AccountNumber:   1,
 		Sequence:        0,
@@ -78,7 +78,7 @@ func TestBuildAndBroadcastMulti_happyPath(t *testing.T) {
 	confirmPollInterval = 5 * time.Millisecond
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		Address:         testFromAddr,
 		AccountNumber:   1,
 		Sequence:        0,
@@ -118,7 +118,7 @@ func TestBuildAndBroadcastMulti_happyPath(t *testing.T) {
 }
 
 func TestBuildAndBroadcastMulti_emptyOutputs(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{})
+	conn := fakechain.StartGRPC(t, fakechain.Config{})
 	chain := &chainregistry.ChainInfo{
 		ChainID:      "osmosis-1",
 		Bech32Prefix: "osmo",
@@ -146,7 +146,7 @@ func TestBuildAndBroadcast_sequenceMismatchRetry(t *testing.T) {
 
 	// First broadcast returns ABCI code 32 (wrong sequence); second succeeds.
 	// First account query returns seq 0; second returns seq 1 (as if refill tx committed).
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		Address:           testFromAddr,
 		AccountNumber:     1,
 		SequencesPerQuery: []uint64{0, 1},
@@ -178,7 +178,7 @@ func TestBuildAndBroadcast_sequenceMismatchRetry(t *testing.T) {
 }
 
 func TestBuildAndBroadcast_accountNotFound(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		// Address deliberately does not match what the mnemonic derives.
 		Address: "osmo1differentaddressthatwontmatch000000000",
 	})
@@ -254,7 +254,7 @@ func TestBuildAndBroadcast_GRPCtoRESTFailover(t *testing.T) {
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
 	// gRPC server that always returns codes.Unavailable for all calls.
-	grpcConn := fakechain.Start(t, fakechain.Config{Unavailable: true})
+	grpcConn := fakechain.StartGRPC(t, fakechain.Config{Unavailable: true})
 
 	// REST server that handles the request successfully after failover.
 	restURL := fakechain.StartREST(t, fakechain.Config{

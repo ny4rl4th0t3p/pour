@@ -31,7 +31,7 @@ func grpcTransportFrom(conn *grpc.ClientConn) *grpcTransport {
 }
 
 func TestBroadcast_success(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{BroadcastTxHash: testTxHash})
+	conn := fakechain.StartGRPC(t, fakechain.Config{BroadcastTxHash: testTxHash})
 	gt := grpcTransportFrom(conn)
 
 	hash, err := broadcast(t.Context(), gt, emptyTxRaw())
@@ -44,7 +44,7 @@ func TestBroadcast_success(t *testing.T) {
 }
 
 func TestBroadcast_abciError(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		BroadcastCode:   5, // insufficient funds
 	})
@@ -57,7 +57,7 @@ func TestBroadcast_abciError(t *testing.T) {
 }
 
 func TestWaitForConfirmation_immediate(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		TxHeight:        100,
 		ConfirmAfter:    0,
@@ -81,7 +81,7 @@ func TestWaitForConfirmation_afterPolling(t *testing.T) {
 	confirmPollInterval = 5 * time.Millisecond
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		TxHeight:        200,
 		ConfirmAfter:    2,
@@ -107,7 +107,7 @@ func TestWaitForConfirmation_timeout(t *testing.T) {
 		confirmPollInterval = origInterval
 	})
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		ConfirmAfter:    9999,
 	})
