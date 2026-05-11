@@ -135,6 +135,67 @@ func TestAutoMode_HotReload(t *testing.T) {
 	require.Equal(t, "confirmed", lastResp.Status, "drip after chain reset and reconnect")
 }
 
+// TestAutoMode_GRPCToRESTFailover validates that pour automatically falls over to REST
+// when the active gRPC endpoint goes down mid-session. Pour is started with both
+// endpoints; a baseline drip confirms gRPC is working; then the gRPC proxy is closed to
+// simulate an endpoint failure; the subsequent drip must still confirm via REST.
+func TestAutoMode_GRPCToRESTFailover(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := harness.SimappConfigA
+	cfg.HostHomePath = t.TempDir()
+	simapp := harness.StartSimapp(t, ctx, cfg)
+
+	// Route gRPC through a local proxy so we can kill it independently of simapp.
+	proxy := harness.StartTCPProxy(t, simapp.GRPCAddr)
+
+	pour := harness.StartPourAuto(t, harness.PourAutoConfig{
+		HomePath:     cfg.HostHomePath,
+		RPCAddr:      simapp.RPCAddr,
+		GRPCAddr:     proxy.Addr(),
+		RESTAddr:     "http://" + simapp.RESTAddr,
+		FundMnemonic: harness.TestMnemonic,
+		PourMnemonic: harness.TestMnemonic,
+	})
+
+	// Baseline: gRPC proxy is up, drip should succeed via gRPC.
+	resp := pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+	require.Equal(t, "confirmed", resp.Status, "baseline drip before gRPC failure")
+
+	// Kill the proxy — gRPC connections from pour drop immediately.
+	proxy.Close()
+
+	// Pour must detect the gRPC failure, fall over to REST, and still serve drips.
+	resp = pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+	require.Equal(t, "confirmed", resp.Status, "drip after gRPC→REST failover")
+}
+
+// TestAutoMode_RESTOnly validates that pour works end-to-end when the chain is
+// configured with only a REST/LCD endpoint (no gRPC). The tx client uses the REST
+// transport for all wire operations: account query, simulate, broadcast, and confirmation.
+func TestAutoMode_RESTOnly(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := harness.SimappConfigA
+	cfg.HostHomePath = t.TempDir()
+	simapp := harness.StartSimapp(t, ctx, cfg)
+
+	pour := harness.StartPourAuto(t, harness.PourAutoConfig{
+		HomePath:     cfg.HostHomePath,
+		RPCAddr:      simapp.RPCAddr,
+		GRPCAddr:     "", // REST-only: override the default
+		RESTAddr:     "http://" + simapp.RESTAddr,
+		FundMnemonic: harness.TestMnemonic,
+		PourMnemonic: harness.TestMnemonic,
+	})
+
+	resp := pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+	require.Equal(t, "confirmed", resp.Status)
+	assert.NotEmpty(t, resp.TxHash)
+
+	simapp.WaitForBalance(t, harness.TestAutoRecipient, "stake", 1)
+}
+
 // TestIBCTransfer_HappyPath validates the full IBC drip path: pour receives a request
 // for an IBC-destination chain (simapp-b-1), issues MsgTransfer on chain A, and the
 // recipient receives the IBC-wrapped token on chain B.
