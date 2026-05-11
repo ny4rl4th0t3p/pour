@@ -70,6 +70,8 @@ chains:
   #   endpoints:
   #     grpc:
   #       - localhost:9090
+  #     # rest:               # use instead of (or alongside) grpc for LCD-only nodes
+  #     #   - http://localhost:1317
   #   fee_tokens:
   #     - denom: stake
   #       average_gas_price: "0.025"
