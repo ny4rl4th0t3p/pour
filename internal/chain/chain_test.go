@@ -505,9 +505,9 @@ func TestRefillNow_belowThreshold(t *testing.T) {
 	if stub.lastSendReq.ToAddress != "cosmos1dist1" {
 		t.Errorf("send to %q, want cosmos1dist1", stub.lastSendReq.ToAddress)
 	}
-	// top-up = 5000000 - 1000000 = 4000000
-	if got := stub.lastSendReq.Coins[0].Amount; got != "4000000" {
-		t.Errorf("top-up amount = %q, want 4000000", got)
+	// top-up = (5000000 × 10) - 1000000 = 49000000
+	if got := stub.lastSendReq.Coins[0].Amount; got != "49000000" {
+		t.Errorf("top-up amount = %q, want 49000000", got)
 	}
 }
 
