@@ -57,10 +57,11 @@ type ServeCmd struct {
 
 	// Auto-configure mode: derive everything from a running local chain.
 	// Companion flags (--home etc.) are hidden from main help; see README for usage.
-	Auto         bool   `kong:"help='Auto-configure from a running local chain. See --home, --rpc, --grpc, --drip, --fund-mnemonic.'"`
+	Auto         bool   `kong:"help='Auto-configure from a running local chain. See --home, --rpc, --grpc, --rest, --drip, --fund-mnemonic.'"`
 	Home         string `kong:"hidden,help='Chain home directory (e.g. ~/.simapp). Required with --auto.'"`
 	RPC          string `kong:"hidden,default='http://localhost:26657',help='Tendermint RPC address for --auto mode.'"`
-	GRPC         string `kong:"hidden,default='localhost:9090',help='gRPC address for --auto mode.'"`
+	GRPC         string `kong:"hidden,default='localhost:9090',help='gRPC address for --auto mode. Use empty string for REST-only.'"`
+	REST         string `kong:"hidden,help='REST/LCD address for --auto mode (e.g. http://localhost:1317). Omit to use gRPC only.'"`
 	Drip         string `kong:"hidden,help='Drip amount in --auto mode (e.g. 1000000uatom). Default: 1000000<denom>.'"`
 	FundMnemonic string `kong:"hidden,env='POUR_FUND_MNEMONIC',help='Mnemonic of a funded genesis account for self-funding on startup.'"`
 }
@@ -98,7 +99,7 @@ func (c *ServeCmd) buildAutoConfig() (mnemonicFn func() string, chains *config.C
 		return nil, nil, err
 	}
 
-	chains, err = devnet.BuildConfig(info, c.GRPC, c.Drip)
+	chains, err = devnet.BuildConfig(info, c.GRPC, c.REST, c.Drip)
 	if err != nil {
 		return nil, nil, err
 	}

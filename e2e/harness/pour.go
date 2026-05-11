@@ -122,7 +122,8 @@ func (s *PourServer) GetInfo(t *testing.T) InfoResponse {
 type PourAutoConfig struct {
 	HomePath     string // host dir containing config/genesis.json (from bind mount)
 	RPCAddr      string // Tendermint RPC URL, e.g. "http://127.0.0.1:26657"
-	GRPCAddr     string // gRPC endpoint, e.g. "127.0.0.1:9090"
+	GRPCAddr     string // gRPC endpoint, e.g. "127.0.0.1:9090"; empty for REST-only
+	RESTAddr     string // REST/LCD endpoint, e.g. "http://127.0.0.1:1317"; empty for gRPC-only
 	FundMnemonic string // optional; triggers self-funding via POUR_FUND_MNEMONIC
 	PourMnemonic string // pre-written to $HOME/.pour/auto-mnemonic before pour starts
 }
@@ -155,7 +156,10 @@ func StartPourAuto(t *testing.T, cfg PourAutoConfig) *PourServer {
 		"--auto",
 		"--home", cfg.HomePath,
 		"--rpc", cfg.RPCAddr,
-		"--grpc", cfg.GRPCAddr,
+		"--grpc", cfg.GRPCAddr, // empty string overrides the default and omits gRPC
+	}
+	if cfg.RESTAddr != "" {
+		args = append(args, "--rest", cfg.RESTAddr)
 	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = append(os.Environ(),

@@ -22,11 +22,6 @@ const (
 
 	// RelayerImage is the Hermes IBC relayer image used in e2e tests.
 	RelayerImage = "ghcr.io/informalsystems/hermes:1.13.1"
-
-	// Bech32 addresses derived from RelayerMnemonic at m/44'/118'/0'/0/0.
-	// Both use the cosmos prefix because simapp rejects non-cosmos-prefixed addresses.
-	relayerAddrA = "cosmos19rl4cm2hmr8afy4kldpxz3fka4jguq0auqdal4"
-	relayerAddrB = "cosmos19rl4cm2hmr8afy4kldpxz3fka4jguq0auqdal4"
 )
 
 // StartRelayer funds the relayer accounts on both chains, writes a Hermes config,
@@ -35,8 +30,8 @@ const (
 func StartRelayer(t *testing.T, ctx context.Context, chainA, chainB *SimappChain, networkName string) {
 	t.Helper()
 
-	fundRelayer(t, ctx, chainA, relayerAddrA)
-	fundRelayer(t, ctx, chainB, relayerAddrB)
+	fundRelayer(t, ctx, chainA, RelayerAddr)
+	fundRelayer(t, ctx, chainB, RelayerAddr)
 
 	configDir := writeHermesConfig(t, chainA, chainB)
 
