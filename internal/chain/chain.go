@@ -79,11 +79,14 @@ func newChain(
 		keyIndices[i] = uint32(i) // 0=holder, 1..N=distributors
 	}
 
-	grpcURLs := make([]string, len(info.Endpoints.GRPC))
-	for i, ep := range info.Endpoints.GRPC {
-		grpcURLs[i] = ep.URL
+	var epPool *tx.EndpointPool
+	if len(info.Endpoints.GRPC) > 0 {
+		grpcURLs := make([]string, len(info.Endpoints.GRPC))
+		for i, ep := range info.Endpoints.GRPC {
+			grpcURLs[i] = ep.URL
+		}
+		epPool = tx.NewEndpointPool(grpcURLs)
 	}
-	epPool := tx.NewEndpointPool(grpcURLs)
 
 	client, err := tx.New(info, mnemonic, keyIndices, tx.Options{GasCache: gc, EndpointPool: epPool})
 	if err != nil {
