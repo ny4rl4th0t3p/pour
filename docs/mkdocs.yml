@@ -1,0 +1,57 @@
+site_name: pour
+site_description: A pure-Go, multi-chain Cosmos faucet
+repo_url: https://github.com/ny4rl4th0t3p/pour
+repo_name: ny4rl4th0t3p/pour
+edit_uri: edit/main/docs/
+docs_dir: pages
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation & quickstart: getting-started.md
+      - Auto mode (devnets): auto-mode.md
+  - Configuration:
+      - chains.yml reference: configuration.md
+      - Transports — gRPC & REST: transports.md
+      - IBC drips: ibc.md
+  - Abuse & auth: abuse.md
+  - Admin API: admin-api.md
+  - Operations: operations.md
