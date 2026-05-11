@@ -19,6 +19,8 @@ var (
 	ErrBroadcastTimeout    = errors.New("tx: broadcast timeout")
 	ErrUnknownAccountType  = errors.New("tx: unknown account type")
 	ErrNoEndpointAvailable = errors.New("tx: no endpoint available")
+
+	errRESTUnavailable = errors.New("tx: REST endpoint unavailable")
 )
 
 // ABCI error codes from the Cosmos SDK.
@@ -44,9 +46,10 @@ func IsInsufficientFee(err error) bool {
 	return errors.Is(err, ErrInsufficientFee)
 }
 
-// classifyChainError maps an ABCI response code to a sentinel error.
-func classifyChainError(resp *abciv1beta1.TxResponse) error {
-	switch resp.Code {
+// classifyCodeAndLog maps an ABCI response code and raw log to a sentinel error.
+// Used by both gRPC and REST paths.
+func classifyCodeAndLog(code uint32, rawLog string) error {
+	switch code {
 	case abciCodeInsufficientFunds:
 		return ErrInsufficientFunds
 	case abciCodeOutOfGas:
@@ -54,8 +57,13 @@ func classifyChainError(resp *abciv1beta1.TxResponse) error {
 	case abciCodeInsufficientFee:
 		return ErrInsufficientFee
 	case abciCodeWrongSequence:
-		return fmt.Errorf("%w: %s", ErrSequenceMismatch, resp.RawLog)
+		return fmt.Errorf("%w: %s", ErrSequenceMismatch, rawLog)
 	default:
-		return fmt.Errorf("tx: chain error code %d: %s", resp.Code, resp.RawLog)
+		return fmt.Errorf("tx: chain error code %d: %s", code, rawLog)
 	}
+}
+
+// classifyChainError maps an ABCI proto response to a sentinel error.
+func classifyChainError(resp *abciv1beta1.TxResponse) error {
+	return classifyCodeAndLog(resp.Code, resp.RawLog)
 }
