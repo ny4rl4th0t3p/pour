@@ -12,7 +12,7 @@ var baseInfo = &GenesisInfo{
 }
 
 func TestBuildConfig_standard(t *testing.T) {
-	cfg, err := BuildConfig(baseInfo, "localhost:9090", "500000uatom")
+	cfg, err := BuildConfig(baseInfo, "localhost:9090", "", "500000uatom")
 	if err != nil {
 		t.Fatalf("BuildConfig: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestBuildConfig_standard(t *testing.T) {
 }
 
 func TestBuildConfig_defaultDrip(t *testing.T) {
-	cfg, err := BuildConfig(baseInfo, "localhost:9090", "")
+	cfg, err := BuildConfig(baseInfo, "localhost:9090", "", "")
 	if err != nil {
 		t.Fatalf("BuildConfig: %v", err)
 	}
@@ -65,8 +65,39 @@ func TestBuildConfig_defaultDrip(t *testing.T) {
 
 func TestBuildConfig_emptyDenom(t *testing.T) {
 	info := &GenesisInfo{ChainID: "x-1", Bech32Prefix: "cosmos", NativeDenom: ""}
-	_, err := BuildConfig(info, "localhost:9090", "")
+	_, err := BuildConfig(info, "localhost:9090", "", "")
 	if err == nil {
 		t.Fatal("expected error for empty NativeDenom, got nil")
+	}
+}
+
+func TestBuildConfig_RESTOnly(t *testing.T) {
+	cfg, err := BuildConfig(baseInfo, "", "http://localhost:1317", "")
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	ch := cfg.Chains[0]
+	if ch.Endpoints == nil {
+		t.Fatal("Endpoints: nil")
+	}
+	if len(ch.Endpoints.GRPC) != 0 {
+		t.Errorf("Endpoints.GRPC: want empty, got %v", ch.Endpoints.GRPC)
+	}
+	if len(ch.Endpoints.REST) != 1 || ch.Endpoints.REST[0] != "http://localhost:1317" {
+		t.Errorf("Endpoints.REST: got %v", ch.Endpoints.REST)
+	}
+}
+
+func TestBuildConfig_bothEndpoints(t *testing.T) {
+	cfg, err := BuildConfig(baseInfo, "localhost:9090", "http://localhost:1317", "")
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	ch := cfg.Chains[0]
+	if len(ch.Endpoints.GRPC) != 1 {
+		t.Errorf("Endpoints.GRPC: got %v", ch.Endpoints.GRPC)
+	}
+	if len(ch.Endpoints.REST) != 1 {
+		t.Errorf("Endpoints.REST: got %v", ch.Endpoints.REST)
 	}
 }
