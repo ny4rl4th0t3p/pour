@@ -1,9 +1,9 @@
 # pour
 
 > **This project is under active development.** The API, config schema, and CLI flags are not stable until v1.0.0.
-> Pre-1.0 minor releases may add new config keys but aim not to remove or rename existing ones. v1.0.0 is planned to
-> follow v0.7.0 once the feature set is complete and the interfaces have been battle-tested — hopefully without too long
-> a gap, but no hard timeline is promised.
+> Pre-1.0 minor releases may add new config keys but aim not to remove or rename existing ones. v1.0.0 is planned once
+> the feature set is complete and the interfaces have been battle-tested — hopefully without too long a gap, but no hard
+> timeline is promised.
 
 A pure-Go, multi-chain Cosmos faucet. Single static binary, no Node, no CGO, no shelling out to chain CLIs. Builds and
 broadcasts transactions via raw protobuf over gRPC — no cosmos-sdk import required. Chains are sourced from the
@@ -229,14 +229,14 @@ curl -X POST http://localhost:8080/v1/pour \
 
 These flags are only active when `--auto` is set. They do not affect normal `pour serve` operation.
 
-| Flag               | Default              | Description                                                                                   |
-|--------------------|----------------------|-----------------------------------------------------------------------------------------------|
-| `--home`           | *(required)*         | Chain home directory. Genesis file is read from `<home>/config/genesis.json`.                 |
-| `--grpc`           | `localhost:9090`     | gRPC endpoint of the running chain.                                                           |
-| `--rpc`            | `http://localhost:26657` | Tendermint RPC endpoint (used for devnet hot-reload detection).                           |
-| `--drip`           | `1000000<denom>`     | Drip amount per request (e.g. `500000uatom`). Defaults to 1 token at 6 decimal places.       |
-| `--fund-mnemonic`  | —                    | Mnemonic of a funded genesis account. When set, pour self-funds its address on startup.       |
-| `POUR_FUND_MNEMONIC` | —                  | Env-var equivalent of `--fund-mnemonic`.                                                      |
+| Flag                 | Default                  | Description                                                                             |
+|----------------------|--------------------------|-----------------------------------------------------------------------------------------|
+| `--home`             | *(required)*             | Chain home directory. Genesis file is read from `<home>/config/genesis.json`.           |
+| `--grpc`             | `localhost:9090`         | gRPC endpoint of the running chain.                                                     |
+| `--rpc`              | `http://localhost:26657` | Tendermint RPC endpoint (used for devnet hot-reload detection).                         |
+| `--drip`             | `1000000<denom>`         | Drip amount per request (e.g. `500000uatom`). Defaults to 1 token at 6 decimal places.  |
+| `--fund-mnemonic`    | —                        | Mnemonic of a funded genesis account. When set, pour self-funds its address on startup. |
+| `POUR_FUND_MNEMONIC` | —                        | Env-var equivalent of `--fund-mnemonic`.                                                |
 
 The faucet mnemonic is auto-generated on first run and saved to `~/.pour/auto-mnemonic` (mode
 `0600`). On subsequent runs the same mnemonic is reloaded. Set `POUR_MNEMONIC` to override.
@@ -378,7 +378,8 @@ make build && cd e2e && POUR_BIN=../pour go test -v -timeout 20m ./...
 - [x] **v0.4.0** — PoW challenge, API keys, signed-wallet authentication
 - [x] **v0.5.0** — IBC plumbing
 - [x] **v0.6.0** — IBC drips
-- [ ] **v0.7.0** — local devnet auto-configure (`pour serve --auto --home`)
+- [x] **v0.7.0** — local devnet auto-configure (`pour serve --auto --home`)
+- [ ] **v0.8.0** — REST/LCD transport (chains with gRPC-only or REST-only endpoints; gRPC→REST failover)
 - [ ] **v1.0.0** — stable: API and config schema frozen under semver guarantees
 
 ## License

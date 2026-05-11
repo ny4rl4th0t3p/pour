@@ -169,7 +169,8 @@
                 altchaVerified = false;
                 altchaWidget.challenge = JSON.parse(challengeJSON);
             }
-        } catch (_) { /* non-fatal; submit will be blocked by altchaVerified */ }
+        } catch (_) { /* non-fatal; submit will be blocked by altchaVerified */
+        }
     }
 
     async function init() {

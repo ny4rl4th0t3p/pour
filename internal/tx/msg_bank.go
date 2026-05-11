@@ -9,7 +9,6 @@ import (
 
 	bankv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1"
 	basev1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/base/v1beta1"
-	transferv1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/ibc/applications/transfer/v1"
 )
 
 // buildMsgSend encodes a MsgSend as a proto Any ready for inclusion in TxBody.
@@ -90,35 +89,6 @@ func buildMsgMultiSend(from string, outputs []SendOutput) (*anypb.Any, error) {
 	}
 	return &anypb.Any{
 		TypeUrl: "/cosmos.bank.v1beta1.MsgMultiSend",
-		Value:   b,
-	}, nil
-}
-
-// buildMsgTransfer encodes a MsgTransfer as a proto Any ready for inclusion in TxBody.
-// timeout_height is always zero — we use timeout_timestamp only (IBC v2 requirement).
-func buildMsgTransfer(
-	senderAddress, receiverAddress string,
-	sourcePort, sourceChannel string,
-	token Coin,
-	timeoutTimestamp uint64,
-	memo string,
-) (*anypb.Any, error) {
-	msg := &transferv1.MsgTransfer{
-		SourcePort:       sourcePort,
-		SourceChannel:    sourceChannel,
-		Token:            &basev1beta1.Coin{Denom: token.Denom, Amount: token.Amount},
-		Sender:           senderAddress,
-		Receiver:         receiverAddress,
-		TimeoutTimestamp: timeoutTimestamp,
-		Memo:             memo,
-		// TimeoutHeight intentionally omitted (nil) — timeout_timestamp is sufficient.
-	}
-	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(msg)
-	if err != nil {
-		return nil, fmt.Errorf("tx: marshal MsgTransfer: %w", err)
-	}
-	return &anypb.Any{
-		TypeUrl: "/ibc.applications.transfer.v1.MsgTransfer",
 		Value:   b,
 	}, nil
 }

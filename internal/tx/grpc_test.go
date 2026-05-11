@@ -7,6 +7,11 @@ import (
 
 	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/internal/tx/testdata/fakechain"
+
+	authv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/auth/v1beta1"
+	bankv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/bank/v1beta1"
+
+	"google.golang.org/grpc"
 )
 
 const testTxHash = "AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00112233445566778899"
@@ -15,11 +20,21 @@ func emptyTxRaw() *txv1beta1.TxRaw {
 	return &txv1beta1.TxRaw{BodyBytes: []byte("body"), AuthInfoBytes: []byte("auth")}
 }
 
-func TestBroadcast_success(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{BroadcastTxHash: testTxHash})
-	svc := txv1beta1.NewServiceClient(conn)
+func grpcTransportFrom(conn *grpc.ClientConn) *grpcTransport {
+	return &grpcTransport{
+		url:     "test",
+		conn:    conn,
+		txSvc:   txv1beta1.NewServiceClient(conn),
+		authSvc: authv1beta1.NewQueryClient(conn),
+		bankSvc: bankv1beta1.NewQueryClient(conn),
+	}
+}
 
-	hash, err := broadcast(t.Context(), svc, emptyTxRaw())
+func TestBroadcast_success(t *testing.T) {
+	conn := fakechain.StartGRPC(t, fakechain.Config{BroadcastTxHash: testTxHash})
+	gt := grpcTransportFrom(conn)
+
+	hash, err := broadcast(t.Context(), gt, emptyTxRaw())
 	if err != nil {
 		t.Fatalf("broadcast: %v", err)
 	}
@@ -29,27 +44,27 @@ func TestBroadcast_success(t *testing.T) {
 }
 
 func TestBroadcast_abciError(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		BroadcastCode:   5, // insufficient funds
 	})
-	svc := txv1beta1.NewServiceClient(conn)
+	gt := grpcTransportFrom(conn)
 
-	_, err := broadcast(t.Context(), svc, emptyTxRaw())
+	_, err := broadcast(t.Context(), gt, emptyTxRaw())
 	if !errors.Is(err, ErrInsufficientFunds) {
 		t.Errorf("expected ErrInsufficientFunds, got %v", err)
 	}
 }
 
 func TestWaitForConfirmation_immediate(t *testing.T) {
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		TxHeight:        100,
 		ConfirmAfter:    0,
 	})
-	svc := txv1beta1.NewServiceClient(conn)
+	gt := grpcTransportFrom(conn)
 
-	result, err := waitForConfirmation(t.Context(), svc, testTxHash)
+	result, err := gt.waitForConfirmation(t.Context(), testTxHash)
 	if err != nil {
 		t.Fatalf("waitForConfirmation: %v", err)
 	}
@@ -62,19 +77,18 @@ func TestWaitForConfirmation_immediate(t *testing.T) {
 }
 
 func TestWaitForConfirmation_afterPolling(t *testing.T) {
-	// Speed up polling so the test doesn't take 4 seconds.
 	origInterval := confirmPollInterval
 	confirmPollInterval = 5 * time.Millisecond
 	t.Cleanup(func() { confirmPollInterval = origInterval })
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		TxHeight:        200,
-		ConfirmAfter:    2, // first 2 calls return NotFound
+		ConfirmAfter:    2,
 	})
-	svc := txv1beta1.NewServiceClient(conn)
+	gt := grpcTransportFrom(conn)
 
-	result, err := waitForConfirmation(t.Context(), svc, testTxHash)
+	result, err := gt.waitForConfirmation(t.Context(), testTxHash)
 	if err != nil {
 		t.Fatalf("waitForConfirmation: %v", err)
 	}
@@ -93,13 +107,13 @@ func TestWaitForConfirmation_timeout(t *testing.T) {
 		confirmPollInterval = origInterval
 	})
 
-	conn := fakechain.Start(t, fakechain.Config{
+	conn := fakechain.StartGRPC(t, fakechain.Config{
 		BroadcastTxHash: testTxHash,
 		ConfirmAfter:    9999,
 	})
-	svc := txv1beta1.NewServiceClient(conn)
+	gt := grpcTransportFrom(conn)
 
-	_, err := waitForConfirmation(t.Context(), svc, testTxHash)
+	_, err := gt.waitForConfirmation(t.Context(), testTxHash)
 	if !errors.Is(err, ErrBroadcastTimeout) {
 		t.Errorf("expected ErrBroadcastTimeout, got %v", err)
 	}

@@ -8,14 +8,13 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	txv1beta1 "github.com/ny4rl4th0t3p/pour/internal/tx/internal/proto/cosmos/tx/v1beta1"
 	"github.com/ny4rl4th0t3p/pour/internal/tx/testdata/fakechain"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
 )
 
-func txSvcClient(t *testing.T, cfg fakechain.Config) txv1beta1.ServiceClient {
+func grpcTransportForFee(t *testing.T, cfg fakechain.Config) *grpcTransport {
 	t.Helper()
-	return txv1beta1.NewServiceClient(fakechain.Start(t, cfg))
+	return grpcTransportFrom(fakechain.StartGRPC(t, cfg))
 }
 
 func oneMsgSend(t *testing.T) []*anypb.Any {
@@ -29,7 +28,7 @@ func oneMsgSend(t *testing.T) []*anypb.Any {
 
 // TestEstimateFee_trustedCache verifies the trusted cache path (SampleCount ≥ 5).
 func TestEstimateFee_trustedCache(t *testing.T) {
-	svc := txSvcClient(t, fakechain.Config{})
+	svc := grpcTransportForFee(t, fakechain.Config{})
 	msgs := oneMsgSend(t)
 
 	cached := &CachedEstimate{
@@ -57,7 +56,7 @@ func TestEstimateFee_trustedCache(t *testing.T) {
 
 // TestEstimateFee_simulate verifies the simulation path.
 func TestEstimateFee_simulate(t *testing.T) {
-	svc := txSvcClient(t, fakechain.Config{GasUsed: 100_000})
+	svc := grpcTransportForFee(t, fakechain.Config{GasUsed: 100_000})
 	msgs := oneMsgSend(t)
 	chain := &chainregistry.ChainInfo{
 		ChainID:   "osmosis-1",
@@ -77,7 +76,7 @@ func TestEstimateFee_simulate(t *testing.T) {
 // TestEstimateFee_registryFallback verifies fallback to chain registry gas price
 // when simulation is not available.
 func TestEstimateFee_registryFallback(t *testing.T) {
-	svc := txSvcClient(t, fakechain.Config{GasUsed: 0}) // simulate returns Unimplemented
+	svc := grpcTransportForFee(t, fakechain.Config{GasUsed: 0}) // simulate returns Unimplemented
 	msgs := oneMsgSend(t)
 	chain := &chainregistry.ChainInfo{
 		ChainID:   "osmosis-1",
@@ -99,7 +98,7 @@ func TestEstimateFee_registryFallback(t *testing.T) {
 
 // TestEstimateFee_staticDefaults verifies the hard-coded static fallback.
 func TestEstimateFee_staticDefaults(t *testing.T) {
-	svc := txSvcClient(t, fakechain.Config{GasUsed: 0})
+	svc := grpcTransportForFee(t, fakechain.Config{GasUsed: 0})
 	msgs := oneMsgSend(t)
 	chain := &chainregistry.ChainInfo{ChainID: "osmosis-1"} // no FeeTokens
 
