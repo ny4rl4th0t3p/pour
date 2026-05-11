@@ -20,7 +20,7 @@ func TestQueryAccount_baseAccount(t *testing.T) {
 	})
 
 	client := authv1beta1.NewQueryClient(conn)
-	acc, err := queryAccount(t.Context(), client, testFromAddr)
+	acc, err := queryAccountGRPC(t.Context(), client, testFromAddr)
 	if err != nil {
 		t.Fatalf("queryAccount: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestQueryAccount_notFound(t *testing.T) {
 	conn := fakechain.Start(t, fakechain.Config{Address: testFromAddr})
 	client := authv1beta1.NewQueryClient(conn)
 
-	_, err := queryAccount(t.Context(), client, "osmo1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+	_, err := queryAccountGRPC(t.Context(), client, "osmo1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 	if !errors.Is(err, ErrAccountNotFound) {
 		t.Errorf("expected ErrAccountNotFound, got %v", err)
 	}

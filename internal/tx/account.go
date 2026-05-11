@@ -19,7 +19,7 @@ var knownAccountDecoders = map[string]accountDecoder{
 	"/ethermint.types.v1.EthAccount":   decodeEthAccount,
 }
 
-func queryAccount(ctx context.Context, client authv1beta1.QueryClient, addr string) (*Account, error) {
+func queryAccountGRPC(ctx context.Context, client authv1beta1.QueryClient, addr string) (*Account, error) {
 	resp, err := client.Account(ctx, &authv1beta1.QueryAccountRequest{Address: addr})
 	if err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.NotFound {
