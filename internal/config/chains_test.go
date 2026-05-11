@@ -217,6 +217,30 @@ chains:
 	}
 }
 
+func TestLoadChains_standalone_RESTOnly(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: mynet-1
+    standalone: true
+    enabled: true
+    bech32_prefix: mynet
+    slip44: 118
+    endpoints:
+      rest:
+        - https://lcd.mynet.example
+    fee_tokens:
+      - denom: umynet
+        average_gas_price: "0.025"
+    drip:
+      anonymous: "1000000umynet"
+      max_per_address_per_day: "50000000umynet"
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("REST-only standalone chain should not error: %v", err)
+	}
+}
+
 func TestToOverrideSet_registryChain(t *testing.T) {
 	cfg, err := LoadChains(writeTemp(t, validYAML))
 	if err != nil {

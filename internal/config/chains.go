@@ -439,8 +439,10 @@ func validateStandalone(chain *ChainConfig) error {
 	if chain.Slip44 == nil {
 		return fmt.Errorf("config: standalone chain %q: slip44 is required", chain.ChainID)
 	}
-	if (chain.Endpoints == nil || len(chain.Endpoints.GRPC) == 0) && chain.IBC.SourceChainID == "" {
-		return fmt.Errorf("config: standalone chain %q: at least one endpoints.grpc is required", chain.ChainID)
+	hasGRPC := chain.Endpoints != nil && len(chain.Endpoints.GRPC) > 0
+	hasREST := chain.Endpoints != nil && len(chain.Endpoints.REST) > 0
+	if !hasGRPC && !hasREST && chain.IBC.SourceChainID == "" {
+		return fmt.Errorf("config: standalone chain %q: at least one endpoints.grpc or endpoints.rest is required", chain.ChainID)
 	}
 	if len(chain.FeeTokens) == 0 {
 		return fmt.Errorf("config: standalone chain %q: at least one fee_tokens entry is required", chain.ChainID)
