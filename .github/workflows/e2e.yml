@@ -1,4 +1,4 @@
-name: IBC E2E
+name: E2E
 
 on:
   pull_request:
@@ -6,9 +6,10 @@ on:
     paths:
       - 'e2e/**'
       - 'internal/**'
+      - 'cmd/**'
       - 'go.mod'
       - 'go.sum'
-      - '.github/workflows/ibc-e2e.yml'
+      - '.github/workflows/e2e.yml'
   workflow_dispatch:
     inputs:
       ref:
@@ -19,7 +20,8 @@ permissions:
   contents: read
 
 jobs:
-  ibc-e2e:
+  e2e-auto:
+    name: Auto-mode e2e
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +50,37 @@ jobs:
           version: v2.11.4
           working-directory: e2e
 
-      - run: go test -v -timeout 20m ./...
+      - run: go test -v -timeout 10m -run "TestAutoMode" ./...
+        working-directory: e2e
+        env:
+          POUR_BIN: ${{ github.workspace }}/pour
+
+  e2e-ibc:
+    name: IBC e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            e2e/go.sum
+
+      - name: Install proto tools
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.69.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.1
+
+      - run: make proto-gen
+      - run: make build
+
+      - run: go test -v -timeout 20m -run "TestIBC" ./...
         working-directory: e2e
         env:
           POUR_BIN: ${{ github.workspace }}/pour
