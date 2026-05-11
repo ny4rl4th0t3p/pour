@@ -187,7 +187,7 @@ func (c *ServeCmd) Run() error {
 		mgr.StartDevnetWatcher(ctx, chains.Chains[0].ChainID, c.RPC)
 	}
 
-	broadcasters := buildBroadcasters(rawClients)
+	broadcasters := buildBroadcasters(mgr)
 
 	tokenStore, err := admin.NewTokenStore()
 	if err != nil {
@@ -235,12 +235,32 @@ type abuseComponents struct {
 	apiKeyStore   *apikey.Store
 }
 
-func buildBroadcasters(rawClients map[string]*tx.Client) map[string]handlers.Broadcaster {
-	out := make(map[string]handlers.Broadcaster, len(rawClients))
-	for id, cl := range rawClients {
-		out[id] = cl
+func buildBroadcasters(mgr *chain.Manager) map[string]handlers.Broadcaster {
+	active := mgr.ListActive()
+	out := make(map[string]handlers.Broadcaster, len(active))
+	for _, snap := range active {
+		out[snap.Info.ChainID] = &dynamicBroadcaster{mgr: mgr, chainID: snap.Info.ChainID}
 	}
 	return out
+}
+
+// dynamicBroadcaster looks up the current tx.Client from the manager on every
+// call so that a chain reset (which replaces the client) is transparent to callers.
+type dynamicBroadcaster struct {
+	mgr     *chain.Manager
+	chainID string
+}
+
+func (d *dynamicBroadcaster) BuildAndBroadcast(ctx context.Context, req tx.SendRequest) (*tx.BroadcastResult, error) {
+	c, ok := d.mgr.GetChain(d.chainID)
+	if !ok {
+		return nil, fmt.Errorf("chain %q: not found", d.chainID)
+	}
+	cl := c.Client()
+	if cl == nil {
+		return nil, fmt.Errorf("chain %q: no tx client (IBC-destination chain)", d.chainID)
+	}
+	return cl.BuildAndBroadcast(ctx, req)
 }
 
 func buildLimiter(ab config.AbuseConfig, db *store.Store) *ratelimit.Limiter {

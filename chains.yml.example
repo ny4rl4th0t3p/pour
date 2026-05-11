@@ -58,3 +58,22 @@ chains:
   #   ibc:
   #     source_chain_id: osmosis-1  # tokens are sent from osmosis-1 via MsgTransfer
   #     timeout: 10m
+
+  ## Standalone / local devnet chain — use with `pour serve --auto` or manually.
+  ## standalone: true skips the chain registry; all fields must be set explicitly.
+  ## Tip: `pour serve --auto --home ~/.simapp` auto-generates this config from genesis.
+  # - chain_id: mychain-1
+  #   standalone: true
+  #   enabled: true
+  #   bech32_prefix: cosmos
+  #   slip44: 118
+  #   endpoints:
+  #     grpc:
+  #       - localhost:9090
+  #   fee_tokens:
+  #     - denom: stake
+  #       average_gas_price: "0.025"
+  #   drip:
+  #     anonymous: 1000000stake
+  #     max_per_address_per_day: 10000000stake
+  #   batch_window: "0s"   # synchronous mode — recommended for single-node devnets

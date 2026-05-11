@@ -26,6 +26,7 @@ func BuildConfig(info *GenesisInfo, grpcAddr, dripAmount string) (*config.Chains
 	enabled := true
 	prefix := info.Bech32Prefix
 	slip44 := defaultSlip44
+	avgGasPrice := "0.025"
 
 	return &config.ChainsConfig{
 		Chains: []config.ChainConfig{
@@ -36,7 +37,7 @@ func BuildConfig(info *GenesisInfo, grpcAddr, dripAmount string) (*config.Chains
 				Bech32Prefix: &prefix,
 				Slip44:       &slip44,
 				FeeTokens: []config.FeeTokenConfig{
-					{Denom: info.NativeDenom},
+					{Denom: info.NativeDenom, AverageGasPrice: &avgGasPrice},
 				},
 				Endpoints: &config.EndpointsConfig{
 					GRPC: []string{grpcAddr},

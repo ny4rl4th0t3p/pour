@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -115,6 +116,78 @@ func (s *PourServer) GetInfo(t *testing.T) InfoResponse {
 		t.Fatalf("decode info: %v", err)
 	}
 	return out
+}
+
+// PourAutoConfig parameterises a StartPourAuto call.
+type PourAutoConfig struct {
+	HomePath     string // host dir containing config/genesis.json (from bind mount)
+	RPCAddr      string // Tendermint RPC URL, e.g. "http://127.0.0.1:26657"
+	GRPCAddr     string // gRPC endpoint, e.g. "127.0.0.1:9090"
+	FundMnemonic string // optional; triggers self-funding via POUR_FUND_MNEMONIC
+	PourMnemonic string // pre-written to $HOME/.pour/auto-mnemonic before pour starts
+}
+
+// StartPourAuto starts pour in --auto mode. It pre-writes PourMnemonic to an isolated
+// HOME directory so the distributor address is deterministic, then waits for /health.
+func StartPourAuto(t *testing.T, cfg PourAutoConfig) *PourServer {
+	t.Helper()
+
+	bin := resolveBin(t)
+	homeDir := t.TempDir() // pour's HOME; isolates the auto-mnemonic file per test
+
+	if cfg.PourMnemonic != "" {
+		pourDir := filepath.Join(homeDir, ".pour")
+		if err := os.MkdirAll(pourDir, 0700); err != nil {
+			t.Fatalf("StartPourAuto: mkdir .pour: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(pourDir, "auto-mnemonic"), []byte(cfg.PourMnemonic+"\n"), 0600); err != nil {
+			t.Fatalf("StartPourAuto: write auto-mnemonic: %v", err)
+		}
+	}
+
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	args := []string{
+		"serve",
+		"--auto",
+		"--home", cfg.HomePath,
+		"--rpc", cfg.RPCAddr,
+		"--grpc", cfg.GRPCAddr,
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = append(os.Environ(),
+		"HOME="+homeDir,
+		"POUR_LISTEN="+listenAddr,
+		"POUR_DB_PATH="+filepath.Join(homeDir, "pour.db"),
+		"POUR_LOG_LEVEL=debug",
+	)
+	if cfg.FundMnemonic != "" {
+		cmd.Env = append(cmd.Env, "POUR_FUND_MNEMONIC="+cfg.FundMnemonic)
+	}
+	cmd.Stdout = &testWriter{t: t, prefix: "[pour-auto] "}
+	cmd.Stderr = &testWriter{t: t, prefix: "[pour-auto] "}
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start pour (auto): %v", err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+
+	waitForHealth(t, "http://"+listenAddr+"/health")
+	return &PourServer{BaseURL: "http://" + listenAddr, cmd: cmd}
+}
+
+// freePort returns an available TCP port on 127.0.0.1 by briefly binding to :0.
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("freePort: %v", err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 func resolveBin(t *testing.T) string {

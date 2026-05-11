@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,109 @@ func TestIBCDiscovery(t *testing.T) {
 
 	info := pour.GetInfo(t)
 	assert.Equal(t, 1, info.IBCChannelCount)
+}
+
+// TestAutoMode_HappyPath validates the full --auto mode path: genesis is parsed from the
+// bind-mounted home dir, the pour address self-funds from the genesis funder account, and
+// a drip to a fresh recipient succeeds.
+func TestAutoMode_HappyPath(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := harness.SimappConfigA
+	cfg.HostHomePath = t.TempDir()
+	simapp := harness.StartSimapp(t, ctx, cfg)
+
+	pour := harness.StartPourAuto(t, harness.PourAutoConfig{
+		HomePath:     cfg.HostHomePath,
+		RPCAddr:      simapp.RPCAddr,
+		GRPCAddr:     simapp.GRPCAddr,
+		FundMnemonic: harness.TestMnemonic,
+		PourMnemonic: harness.TestMnemonic,
+	})
+
+	resp := pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+	require.Equal(t, "confirmed", resp.Status)
+	assert.NotEmpty(t, resp.TxHash)
+
+	simapp.WaitForBalance(t, harness.TestAutoRecipient, "stake", 1)
+}
+
+// TestAutoMode_WaitForFunding validates the flow where no fund-mnemonic is provided:
+// pour polls until an external actor funds its address, then begins serving requests.
+func TestAutoMode_WaitForFunding(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := harness.SimappConfigA
+	cfg.HostHomePath = t.TempDir()
+	simapp := harness.StartSimapp(t, ctx, cfg)
+
+	// Fund pour's address (derived from RelayerMnemonic, not in genesis) concurrently.
+	// pour.StartPourAuto blocks on /health until pour detects the balance and starts.
+	go func() {
+		time.Sleep(3 * time.Second)
+		_, _, _ = simapp.ExecIn(ctx, []string{
+			"simd", "tx", "bank", "send", "validator", harness.RelayerAddr, "5000000stake",
+			"--keyring-backend", "test",
+			"--chain-id", simapp.ChainID,
+			"--yes", "--gas", "auto", "--gas-adjustment", "1.3",
+			"--gas-prices", "0.025stake",
+			"--home", "/root/.simapp",
+		})
+	}()
+
+	pour := harness.StartPourAuto(t, harness.PourAutoConfig{
+		HomePath:     cfg.HostHomePath,
+		RPCAddr:      simapp.RPCAddr,
+		GRPCAddr:     simapp.GRPCAddr,
+		PourMnemonic: harness.RelayerMnemonic,
+	})
+
+	resp := pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+	require.Equal(t, "confirmed", resp.Status)
+	assert.NotEmpty(t, resp.TxHash)
+}
+
+// TestAutoMode_HotReload validates that pour recovers automatically after a devnet chain
+// reset: the block height regression is detected, the gRPC client is reconnected, and
+// subsequent drips succeed without operator intervention.
+func TestAutoMode_HotReload(t *testing.T) {
+	ctx := context.Background()
+
+	cfg := harness.SimappConfigA
+	cfg.HostHomePath = t.TempDir()
+	cfg.Restartable = true
+	simapp := harness.StartSimapp(t, ctx, cfg)
+
+	pour := harness.StartPourAuto(t, harness.PourAutoConfig{
+		HomePath:     cfg.HostHomePath,
+		RPCAddr:      simapp.RPCAddr,
+		GRPCAddr:     simapp.GRPCAddr,
+		FundMnemonic: harness.TestMnemonic,
+		PourMnemonic: harness.TestMnemonic,
+	})
+
+	// Baseline drip — confirms chain and pour are working before the reset.
+	resp := pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+	require.Equal(t, "confirmed", resp.Status, "baseline drip before reset")
+
+	// Wait for a height well above what the reset chain can produce within one watcher
+	// poll interval (5 s at ~1 block/s). This guarantees the watcher has recorded a
+	// prevHeight that the restarted chain cannot reach before the next poll fires,
+	// ensuring the height regression is detected.
+	simapp.WaitForBlockHeight(t, 15)
+	simapp.ResetChain(t, ctx)
+
+	// Poll until pour detects the height regression, reconnects, and serves drips again.
+	deadline := time.Now().Add(30 * time.Second)
+	var lastResp harness.PourResponse
+	for time.Now().Before(deadline) {
+		lastResp = pour.Pour(t, "simapp-a-1", harness.TestAutoRecipient)
+		if lastResp.Status == "confirmed" {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	require.Equal(t, "confirmed", lastResp.Status, "drip after chain reset and reconnect")
 }
 
 // TestIBCTransfer_HappyPath validates the full IBC drip path: pour receives a request
