@@ -54,9 +54,9 @@ gRPC endpoint A fails
 The switch to REST is transparent — signing, fee estimation, and sequence management are unchanged.
 
 !!! note
-    Simulation (`Simulate`) returns `(0, nil)` on REST when the node returns a non-2xx response.
-    Pour treats this as "simulation unavailable" and falls back to the configured gas price without
-    simulation, the same behaviour as when simulation is not supported on a gRPC endpoint.
+Simulation (`Simulate`) returns `(0, nil)` on REST when the node returns a non-2xx response.
+Pour treats this as "simulation unavailable" and falls back to the configured gas price without
+simulation, the same behaviour as when simulation is not supported on a gRPC endpoint.
 
 ## Endpoint health probing
 

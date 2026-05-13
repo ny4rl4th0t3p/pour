@@ -201,7 +201,8 @@ Pour uses `average_gas_price` for fee estimation. Required for standalone chains
 | `signed`                  | Drip amount for signed-wallet requests. Optional — falls back to `anonymous`.                                   |
 | `max_per_address_per_day` | Per-address daily cap. **Required.**                                                                            |
 
-API keys can individually override the drip amount via `per_chain_drips` at creation time; keys without an override inherit `anonymous`. See [Abuse & auth — API keys](abuse.md#api-keys).
+API keys can individually override the drip amount via `per_chain_drips` at creation time; keys without an override
+inherit `anonymous`. See [Abuse & auth — API keys](abuse.md#api-keys).
 
 ### `distributors`
 

@@ -1,10 +1,10 @@
 # Auto mode (devnets)
 
 !!! tip "Uncommon capability"
-    Most Cosmos faucets require a fully-written `chains.yml` even for a local devnet — you have to know
-    the chain ID, bech32 prefix, denom, gas prices, and gRPC endpoint before the faucet will start.
-    Pour's auto mode eliminates all of that: point it at the chain's home directory and it figures
-    everything out from `genesis.json`.
+Most Cosmos faucets require a fully-written `chains.yml` even for a local devnet — you have to know
+the chain ID, bech32 prefix, denom, gas prices, and gRPC endpoint before the faucet will start.
+Pour's auto mode eliminates all of that: point it at the chain's home directory and it figures
+everything out from `genesis.json`.
 
 Auto mode lets pour self-configure from a local chain's genesis file. No manual `chains.yml` entry
 is needed — pour reads the genesis, derives the chain ID, bech32 prefix, and native denom, then
@@ -76,8 +76,8 @@ pour:
 This means you can reset a local chain without restarting the faucet process.
 
 !!! note
-    Hot reload requires the RPC endpoint to be reachable. It has no effect in production
-    deployments where block height regressions do not occur.
+Hot reload requires the RPC endpoint to be reachable. It has no effect in production
+deployments where block height regressions do not occur.
 
 ## Example: ignite chain serve
 

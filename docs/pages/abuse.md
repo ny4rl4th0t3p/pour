@@ -48,6 +48,24 @@ abuse:
 ### Issue a key
 
 ```sh
+# Basic: scoped to one chain
+pour admin api-keys create --chain osmosis-1 --label ci-bot --rate-limit 100
+
+# Scoped to all chains
+pour admin api-keys create --chain '*' --label internal-tool
+
+# With a per-chain drip override
+pour admin api-keys create --chain osmosis-1 --label ci-bot \
+  --per-chain-drip osmosis-1=3000000uosmo
+
+# With an expiry
+pour admin api-keys create --chain osmosis-1 --label temp-key \
+  --expires 2027-01-01T00:00:00Z
+```
+
+Or directly via the API:
+
+```sh
 TOKEN=$(cat .pour-admin-token)
 
 curl -X POST http://localhost:8080/admin/api-keys \
@@ -92,6 +110,13 @@ curl -X POST http://localhost:8080/v1/pour \
 | `expires_at`          | Optional expiry (RFC3339). Omit for a non-expiring key.                                  |
 
 ### Manage keys
+
+```sh
+pour admin api-keys list
+pour admin api-keys revoke 01JXYZ
+```
+
+Or directly via the API:
 
 ```sh
 # List active keys

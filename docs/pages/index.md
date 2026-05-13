@@ -59,3 +59,6 @@ Node.js for the web UI, or require the cosmos-sdk as a Go library. pour takes a 
 | v0.6.0  | IBC drips                                                          |
 | v0.7.0  | Local devnet auto-configure (`pour serve --auto --home`)           |
 | v0.8.0  | REST/LCD transport, gRPC→REST failover                             |
+| v0.8.1  | Documentation site launch, refill bug fixes                        |
+| v0.8.2  | OpenAPI spec accuracy, admin CLI completeness (`chains status`, `api-keys` create flags + list fields) |
+| v0.8.3  | *(planned)* smoke test coverage for admin API key endpoints        |
