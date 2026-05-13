@@ -64,11 +64,7 @@ release:
   header: |
     ## pour {{ .Tag }}
 
-    A single-binary Cosmos faucet — no SDK dependency, raw protobuf over gRPC.
-
-    **Installation**
-
-    Download the binary for your platform below, or:
+    Pure-Go, multi-chain Cosmos faucet. Single static binary — no Node, no CGO, no SDK dependency.
 
     ```sh
     go install github.com/ny4rl4th0t3p/pour/cmd/pour@{{ .Tag }}
