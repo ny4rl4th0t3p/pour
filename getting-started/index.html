@@ -1174,7 +1174,7 @@ serve using your wallet app or the chain CLI, then fund it before starting the f
 <tr>
 <td><code>POUR_ADMIN_URL</code></td>
 <td><code>http://localhost:8080</code></td>
-<td>Base URL used by <code>pour chains</code> CLI subcommands.</td>
+<td>Base URL used by <code>pour admin</code> CLI subcommands.</td>
 </tr>
 </tbody>
 </table>
@@ -1191,17 +1191,26 @@ to an env-var-managed token, delete the file.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>cat<span class="w"> </span>.pour-admin-token<span class="w">   </span><span class="c1"># read the current token</span>
 </code></pre></div>
 <h2 id="cli-reference">CLI reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pour serve                     start the faucet server
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>pour keys generate             generate a new BIP39 mnemonic
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>pour version                   print version, commit, and build date
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pour serve                          start the faucet server
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>pour keys generate                  generate a new BIP39 mnemonic
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>pour version                        print version, commit, and build date
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>pour chains list               list chains from the running daemon
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>pour chains validate           validate a chains.yml file offline
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>pour chains diff               show overrides that differ from the live registry
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>pour chains pending            list pending registry changes
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>pour chains accept             accept a pending change for a field
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>pour chains pin                emit config snippet to pin a field to its current value
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>pour chains refresh            trigger an immediate registry re-fetch
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>pour chains validate                validate a chains.yml file offline (no daemon needed)
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>pour admin chains list              list chains from the running daemon
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>pour admin chains diff              show overrides that differ from the live registry
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>pour admin chains pending           list pending registry changes
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>pour admin chains accept            accept a pending change for a field
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>pour admin chains pin               emit config snippet to pin a field to its current value
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>pour admin chains refresh           trigger an immediate registry re-fetch
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>pour admin chains reload            hot-reload chains.yml without restarting the daemon
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>pour admin chains status &lt;chain&gt;    show operational status of a chain
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>pour admin chains resume &lt;chain&gt;    resume a suspended chain
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a>pour admin api-keys create          create a new API key (--chain required)
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a>pour admin api-keys list            list all active API keys
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a>pour admin api-keys revoke &lt;id&gt;     revoke an API key
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>pour admin api-keys rotate          rotate the admin token
 </code></pre></div>
 <h2 id="sending-your-first-drip">Sending your first drip<a class="headerlink" href="#sending-your-first-drip" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:8080/v1/pour<span class="w"> </span><span class="se">\</span>

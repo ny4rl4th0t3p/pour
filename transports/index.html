@@ -1070,10 +1070,10 @@ endpoints unhealthy when they fail and skipping them until they recover.</p>
 <p>The switch to REST is transparent — signing, fee estimation, and sequence management are unchanged.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
+</div>
 <p>Simulation (<code>Simulate</code>) returns <code>(0, nil)</code> on REST when the node returns a non-2xx response.
 Pour treats this as "simulation unavailable" and falls back to the configured gas price without
 simulation, the same behaviour as when simulation is not supported on a gRPC endpoint.</p>
-</div>
 <h2 id="endpoint-health-probing">Endpoint health probing<a class="headerlink" href="#endpoint-health-probing" title="Permanent link">&para;</a></h2>
 <p>Pour runs a background probe loop for each endpoint pool. Unhealthy endpoints are re-probed
 periodically; once they respond successfully they re-enter the rotation.</p>

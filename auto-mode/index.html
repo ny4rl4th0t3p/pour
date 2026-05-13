@@ -1057,11 +1057,11 @@
 <h1 id="auto-mode-devnets">Auto mode (devnets)<a class="headerlink" href="#auto-mode-devnets" title="Permanent link">&para;</a></h1>
 <div class="admonition tip">
 <p class="admonition-title">Uncommon capability</p>
+</div>
 <p>Most Cosmos faucets require a fully-written <code>chains.yml</code> even for a local devnet — you have to know
 the chain ID, bech32 prefix, denom, gas prices, and gRPC endpoint before the faucet will start.
 Pour's auto mode eliminates all of that: point it at the chain's home directory and it figures
 everything out from <code>genesis.json</code>.</p>
-</div>
 <p>Auto mode lets pour self-configure from a local chain's genesis file. No manual <code>chains.yml</code> entry
 is needed — pour reads the genesis, derives the chain ID, bech32 prefix, and native denom, then
 generates or reloads a faucet mnemonic and starts serving.</p>
@@ -1143,9 +1143,9 @@ pour:</p>
 <p>This means you can reset a local chain without restarting the faucet process.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
+</div>
 <p>Hot reload requires the RPC endpoint to be reachable. It has no effect in production
 deployments where block height regressions do not occur.</p>
-</div>
 <h2 id="example-ignite-chain-serve">Example: ignite chain serve<a class="headerlink" href="#example-ignite-chain-serve" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Terminal 1</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>ignite<span class="w"> </span>chain<span class="w"> </span>serve
@@ -1175,11 +1175,11 @@ deployments where block height regressions do not occur.</p>
 </tr>
 <tr>
 <td><code>bech32_prefix</code></td>
-<td><code>genesis.json → app_state.auth</code> (account prefix)</td>
+<td>Inferred from the HRP of the first address in <code>genesis.json → app_state.bank.balances</code></td>
 </tr>
 <tr>
 <td><code>native_denom</code></td>
-<td>First denom from <code>genesis.json → app_state.bank.supply</code></td>
+<td><code>genesis.json → app_state.staking.params.bond_denom</code></td>
 </tr>
 <tr>
 <td><code>slip44</code></td>
