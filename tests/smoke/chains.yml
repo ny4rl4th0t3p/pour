@@ -1,7 +1,9 @@
 abuse:
   ip_rate_limit:
-    requests_per_window: 3
+    requests_per_window: 5
     window: 1h
+  api_keys:
+    enabled: true
 
 admin:
   allowed_cidrs:

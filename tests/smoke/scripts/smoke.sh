@@ -76,6 +76,64 @@ while [ "$i" -lt 30 ]; do
 done
 echo "    distributor: ${DIST_BAL}stake"
 
+ADMIN="$BASE/admin"
+
+echo "==> admin: api-keys create"
+KEY_RESP=$(curl -sf -X POST \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"chain_scope":["test-1"]}' \
+  "$ADMIN/api-keys")
+echo "    $KEY_RESP"
+echo "$KEY_RESP" | grep -q '"id"'
+echo "$KEY_RESP" | grep -q '"secret"'
+API_KEY_ID=$(printf '%s' "$KEY_RESP" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+API_KEY_SECRET=$(printf '%s' "$KEY_RESP" | grep -o '"secret":"[^"]*"' | cut -d'"' -f4)
+[ -n "$API_KEY_ID" ] || { echo "FAIL: no id in create response"; exit 1; }
+[ -n "$API_KEY_SECRET" ] || { echo "FAIL: no secret in create response"; exit 1; }
+
+echo "==> admin: api-keys list (key present)"
+LIST=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" "$ADMIN/api-keys")
+echo "    $LIST"
+echo "$LIST" | grep -q "\"$API_KEY_ID\""
+
+echo "==> pour with api key"
+APIKEY_PRE=$(stake_balance "$RECIPIENT")
+APIKEY_PRE=${APIKEY_PRE:-0}
+RESP_AK=$(curl -sf -X POST "$BASE/v1/pour" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY_SECRET" \
+  -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}")
+echo "    $RESP_AK"
+echo "$RESP_AK" | grep -q '"drip_id"'
+APIKEY_EXPECTED=$((APIKEY_PRE + 1000000))
+echo "==> waiting for api key pour to settle"
+i=0
+while [ "$i" -lt 30 ]; do
+  APIKEY_BAL=$(stake_balance "$RECIPIENT")
+  APIKEY_BAL=${APIKEY_BAL:-0}
+  [ "$APIKEY_BAL" -eq "$APIKEY_EXPECTED" ] && break
+  i=$((i + 1))
+  [ "$i" -eq 30 ] && { echo "TIMEOUT: api key pour balance never reached ${APIKEY_EXPECTED}stake"; exit 1; }
+  sleep 1
+done
+echo "    recipient after api key pour: ${APIKEY_BAL}stake"
+
+echo "==> admin: api-keys revoke"
+curl -sf -X DELETE \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "$ADMIN/api-keys/$API_KEY_ID" | grep -q '"ok":true'
+
+echo "==> pour with revoked key returns 401"
+REVOKE_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/v1/pour" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY_SECRET" \
+  -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}")
+if [ "$REVOKE_CODE" != "401" ]; then
+  echo "FAIL: expected 401 with revoked key, got $REVOKE_CODE"
+  exit 1
+fi
+
 echo "==> recipient balance (pre-pour)"
 PRE_BAL=$(stake_balance "$RECIPIENT")
 PRE_BAL=${PRE_BAL:-0}
@@ -138,12 +196,12 @@ while [ "$i" -lt 30 ]; do
 done
 echo "    balance after batch: ${BATCH_BAL}stake"
 
-echo "==> rate limit (4th pour from same IP; limit=3 in smoke chains.yml)"
+echo "==> rate limit (6th pour from same IP; limit=5 in smoke chains.yml)"
 RESP2=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/v1/pour" \
   -H 'Content-Type: application/json' \
   -d "{\"chain_id\":\"test-1\",\"address\":\"$RECIPIENT\"}")
 if [ "$RESP2" != "429" ]; then
-  echo "FAIL: expected 429 on 4th pour from same IP, got $RESP2"
+  echo "FAIL: expected 429 on 6th pour from same IP, got $RESP2"
   exit 1
 fi
 
@@ -155,8 +213,6 @@ if [ "$STATUS" = "200" ]; then
   echo "FAIL: expected 4xx for unknown chain, got $STATUS"
   exit 1
 fi
-
-ADMIN="$BASE/admin"
 
 echo "==> admin: distributor list"
 DISTS=$(curl -sf -H "Authorization: Bearer $ADMIN_TOKEN" \
