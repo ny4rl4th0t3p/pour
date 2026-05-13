@@ -1,8 +1,5 @@
 # pour
 
-> **This project is under active development.** The API, config schema, and CLI flags are not stable until v1.0.0.
-> Pre-1.0 minor releases may add new config keys but aim not to remove or rename existing ones.
-
 A pure-Go, multi-chain Cosmos faucet. Single static binary, no Node, no CGO, no shelling out to chain CLIs. Builds and
 broadcasts transactions via raw protobuf over gRPC or REST — no cosmos-sdk import required.
 
@@ -12,17 +9,21 @@ genesis file generation) and [chaincoord](https://github.com/ny4rl4th0t3p/chainc
 (multi-party launch coordination). Together they cover the painful workflows of
 launching and running a Cosmos chain. All three are Apache 2.0 and self-hostable.*
 
+> **This project is under active development.** The API, config schema, and CLI flags are not stable until v1.0.0.
+> Pre-1.0 minor releases may add new config keys but aim not to remove or rename existing ones.
+>
 **Highlights:**
 
 - Chains sourced from [cosmos/chain-registry](https://github.com/cosmos/chain-registry) and cached locally — add a
   chain by ID with no manual metadata
 - Standalone mode for chains not in the public registry (local devnets, private testnets)
-- Multiple distributor wallets reduce sequence-number contention under high load; holder auto-refills them at startup
+- Multiple distributor wallets reduce sequence-number contention under high load; holder auto-refills them as they
+  drain.
 - Priority-ordered abuse gate: API key → signed wallet (ADR-036) → proof-of-work (Altcha) → anonymous
 - Per-address daily cap keyed on raw address bytes, so a chain prefix migration cannot reset a user's allowance
 - Embedded web UI, Prometheus metrics, hot-reload config, admin API
 
-📖 **[Full documentation](https://ny4rl4th0t3p.github.io/pour)**
+📖 **[Full documentation](https://ny4rl4th0t3p.github.io/pour)** · 🏗️ **[Design document](docs/DESIGN.md)**
 
 ---
 
