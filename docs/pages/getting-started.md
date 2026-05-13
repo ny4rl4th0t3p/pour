@@ -84,7 +84,7 @@ The faucet is now available at `http://localhost:8080`.
 | `POUR_LOG_LEVEL`   | `info`                  | Log level: `debug`, `info`, `warn`, `error`.                             |
 | `POUR_METRICS`     | `false`                 | Enable Prometheus metrics at `/metrics`.                                 |
 | `POUR_NO_UI`       | `false`                 | Disable the embedded web UI.                                             |
-| `POUR_ADMIN_URL`   | `http://localhost:8080` | Base URL used by `pour chains` CLI subcommands.                          |
+| `POUR_ADMIN_URL`   | `http://localhost:8080` | Base URL used by `pour admin` CLI subcommands.                           |
 
 ## Admin token
 
@@ -105,17 +105,26 @@ cat .pour-admin-token   # read the current token
 ## CLI reference
 
 ```
-pour serve                     start the faucet server
-pour keys generate             generate a new BIP39 mnemonic
-pour version                   print version, commit, and build date
+pour serve                          start the faucet server
+pour keys generate                  generate a new BIP39 mnemonic
+pour version                        print version, commit, and build date
 
-pour chains list               list chains from the running daemon
-pour chains validate           validate a chains.yml file offline
-pour chains diff               show overrides that differ from the live registry
-pour chains pending            list pending registry changes
-pour chains accept             accept a pending change for a field
-pour chains pin                emit config snippet to pin a field to its current value
-pour chains refresh            trigger an immediate registry re-fetch
+pour chains validate                validate a chains.yml file offline (no daemon needed)
+
+pour admin chains list              list chains from the running daemon
+pour admin chains diff              show overrides that differ from the live registry
+pour admin chains pending           list pending registry changes
+pour admin chains accept            accept a pending change for a field
+pour admin chains pin               emit config snippet to pin a field to its current value
+pour admin chains refresh           trigger an immediate registry re-fetch
+pour admin chains reload            hot-reload chains.yml without restarting the daemon
+pour admin chains status <chain>    show operational status of a chain
+pour admin chains resume <chain>    resume a suspended chain
+
+pour admin api-keys create          create a new API key (--chain required)
+pour admin api-keys list            list all active API keys
+pour admin api-keys revoke <id>     revoke an API key
+pour admin api-keys rotate          rotate the admin token
 ```
 
 ## Sending your first drip

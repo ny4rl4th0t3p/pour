@@ -55,7 +55,7 @@ components:
 
     Error:
       type: object
-      required: [error]
+      required: [ error ]
       properties:
         error:
           type: string
@@ -63,7 +63,7 @@ components:
 
     OkResponse:
       type: object
-      required: [ok]
+      required: [ ok ]
       properties:
         ok:
           type: boolean
@@ -73,7 +73,7 @@ components:
 
     PowCredential:
       type: object
-      required: [challenge, solution]
+      required: [ challenge, solution ]
       properties:
         challenge:
           type: string
@@ -84,7 +84,7 @@ components:
 
     SigCredential:
       type: object
-      required: [nonce, address, pubkey, signature]
+      required: [ nonce, address, pubkey, signature ]
       properties:
         nonce:
           type: string
@@ -102,7 +102,7 @@ components:
 
     PourRequest:
       type: object
-      required: [chain_id, address]
+      required: [ chain_id, address ]
       properties:
         chain_id:
           type: string
@@ -119,7 +119,7 @@ components:
 
     PourResponse:
       type: object
-      required: [drip_id, status, amount, mechanism]
+      required: [ drip_id, status, amount, mechanism ]
       properties:
         drip_id:
           type: integer
@@ -128,7 +128,7 @@ components:
           example: 42
         status:
           type: string
-          enum: [queued, confirmed, failed]
+          enum: [ queued, confirmed, failed ]
           description: |
             `confirmed` — transaction included on-chain (synchronous path).
             `queued` — request accepted into the batch queue; the transaction
@@ -150,7 +150,7 @@ components:
 
     HealthResponse:
       type: object
-      required: [status]
+      required: [ status ]
       properties:
         status:
           type: string
@@ -158,7 +158,7 @@ components:
 
     AbuseInfo:
       type: object
-      required: [pow_enabled, api_keys_enabled, signature_challenge_enabled]
+      required: [ pow_enabled, api_keys_enabled, signature_challenge_enabled ]
       properties:
         pow_enabled:
           type: boolean
@@ -169,18 +169,17 @@ components:
 
     InfoResponse:
       type: object
-      required: [version, registry_last_fetched, registry_refresh_mode, pending_frozen_count, ibc_channel_count, abuse]
+      required: [ version, registry_last_fetched, registry_refresh_mode, pending_frozen_count, ibc_channel_count, abuse ]
       properties:
         version:
           type: string
           example: 0.8.0
         registry_last_fetched:
           type: string
-          format: date-time
-          description: RFC3339 timestamp of the last successful registry fetch. Empty if never fetched.
+          description: RFC3339 timestamp of the last successful registry fetch. Empty string if never fetched.
         registry_refresh_mode:
           type: string
-          enum: [live, manual]
+          enum: [ live, manual ]
         pending_frozen_count:
           type: integer
           description: Number of registry changes waiting for operator acceptance.
@@ -192,7 +191,7 @@ components:
 
     ChainInfo:
       type: object
-      required: [chain_id, bech32_prefix, drip_amount]
+      required: [ chain_id, bech32_prefix, drip_amount ]
       properties:
         chain_id:
           type: string
@@ -207,7 +206,7 @@ components:
 
     ChainsResponse:
       type: object
-      required: [chains]
+      required: [ chains ]
       properties:
         chains:
           type: array
@@ -216,7 +215,7 @@ components:
 
     IBCChannelInfo:
       type: object
-      required: [peer_chain_name, channel_id, peer_channel_id, port_id, status, preferred]
+      required: [ peer_chain_name, channel_id, peer_channel_id, port_id, status, preferred ]
       properties:
         peer_chain_name:
           type: string
@@ -234,14 +233,14 @@ components:
           example: transfer
         status:
           type: string
-          enum: [live, stale, unknown]
+          enum: [ live, upcoming, killed ]
         preferred:
           type: boolean
           description: True when this is the registry-recommended channel for the pair.
 
     ChainDetailResponse:
       type: object
-      required: [chain_id, chain_name, bech32_prefix, slip44, drip_amount, last_changed, ibc_channels]
+      required: [ chain_id, chain_name, bech32_prefix, slip44, drip_amount, last_changed, ibc_channels ]
       properties:
         chain_id:
           type: string
@@ -260,8 +259,7 @@ components:
           example: 1000000uosmo
         last_changed:
           type: string
-          format: date-time
-          description: RFC3339 timestamp of last registry update. Empty if unchanged since startup.
+          description: RFC3339 timestamp of last registry update. Empty string if unchanged since startup.
         ibc_channels:
           type: array
           items:
@@ -271,7 +269,7 @@ components:
 
     ChallengeResponse:
       type: object
-      required: [challenge]
+      required: [ challenge ]
       properties:
         challenge:
           type: string
@@ -279,7 +277,7 @@ components:
 
     NonceResponse:
       type: object
-      required: [nonce]
+      required: [ nonce ]
       properties:
         nonce:
           type: string
@@ -289,7 +287,7 @@ components:
 
     AcceptRequest:
       type: object
-      required: [chain_id]
+      required: [ chain_id ]
       properties:
         chain_id:
           type: string
@@ -303,7 +301,7 @@ components:
 
     RefreshResponse:
       type: object
-      required: [hot_reloaded, warned, frozen, removed]
+      required: [ hot_reloaded, warned, frozen, removed ]
       properties:
         hot_reloaded:
           type: integer
@@ -320,7 +318,7 @@ components:
 
     DistributorState:
       type: object
-      required: [index, address, balance, queue_depth, status]
+      required: [ index, address, balance, queue_depth, status ]
       properties:
         index:
           type: integer
@@ -336,7 +334,7 @@ components:
           description: Number of drip requests currently queued to this distributor.
         status:
           type: string
-          enum: [healthy, recovering]
+          enum: [ healthy, recovering ]
 
     RefillRequest:
       type: object
@@ -347,7 +345,7 @@ components:
 
     RefillResult:
       type: object
-      required: [index, ok]
+      required: [ index, ok ]
       properties:
         index:
           type: integer
@@ -359,14 +357,12 @@ components:
 
     GasCacheRow:
       type: object
-      required: [base_gas, gas_per_output, fee_denom, gas_price_amount, sample_count, last_updated, multisend_gas_per_output, multisend_sample_count]
+      required: [ base_gas, gas_per_output, fee_denom, gas_price_amount, sample_count, last_updated, multisend_gas_per_output, multisend_sample_count ]
       properties:
         base_gas:
           type: integer
-          format: int64
         gas_per_output:
           type: integer
-          format: int64
         fee_denom:
           type: string
           example: uosmo
@@ -390,13 +386,12 @@ components:
           format: int64
         multisend_gas_per_output:
           type: integer
-          format: int64
         multisend_sample_count:
           type: integer
 
     ChainStatus:
       type: object
-      required: [suspended, multisend_disabled, send_fail_streak, multisend_fail_streak]
+      required: [ suspended, multisend_disabled, send_fail_streak, multisend_fail_streak ]
       properties:
         suspended:
           type: boolean
@@ -415,7 +410,7 @@ components:
 
     APIKey:
       type: object
-      required: [id, chain_scope, created_at]
+      required: [ id, chain_scope, created_at ]
       properties:
         id:
           type: string
@@ -427,13 +422,13 @@ components:
           items:
             type: string
           description: Chain IDs this key is authorised for. `["*"]` means all chains.
-          example: ["osmosis-1", "cosmoshub-4"]
+          example: [ "osmosis-1", "cosmoshub-4" ]
         per_chain_drips:
           type: object
           additionalProperties:
             type: string
           description: Per-chain drip amount overrides (coin strings).
-          example: {"osmosis-1": "5000000uosmo"}
+          example: { "osmosis-1": "5000000uosmo" }
         rate_limit_per_hour:
           type: integer
           description: Max drips per hour per this key. 0 means no per-key limit.
@@ -449,7 +444,7 @@ components:
 
     CreateKeyRequest:
       type: object
-      required: [chain_scope]
+      required: [ chain_scope ]
       properties:
         label:
           type: string
@@ -459,7 +454,7 @@ components:
           items:
             type: string
           description: Chain IDs this key may drip on. Use `["*"]` for all chains.
-          example: ["osmosis-1"]
+          example: [ "osmosis-1" ]
         per_chain_drips:
           type: object
           additionalProperties:
@@ -475,7 +470,7 @@ components:
 
     CreateKeyResponse:
       type: object
-      required: [id, secret]
+      required: [ id, secret ]
       properties:
         id:
           type: string
@@ -489,6 +484,12 @@ components:
   responses:
     Unauthorized:
       description: Missing or invalid admin token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Client IP is not in the admin allowlist.
       content:
         application/json:
           schema:
@@ -514,7 +515,7 @@ paths:
     get:
       summary: Health check
       operationId: getHealth
-      tags: [discovery]
+      tags: [ discovery ]
       responses:
         "200":
           description: Server is healthy.
@@ -530,7 +531,7 @@ paths:
       summary: Server info
       description: Returns version, registry state, and active abuse-prevention mechanism flags.
       operationId: getInfo
-      tags: [discovery]
+      tags: [ discovery ]
       responses:
         "200":
           description: OK
@@ -544,7 +545,7 @@ paths:
       summary: List enabled chains
       description: Returns a summary of every chain currently accepting drip requests.
       operationId: listChains
-      tags: [discovery]
+      tags: [ discovery ]
       responses:
         "200":
           description: OK
@@ -558,7 +559,7 @@ paths:
       summary: Chain detail
       description: Returns full metadata for one chain, including IBC channels.
       operationId: getChain
-      tags: [discovery]
+      tags: [ discovery ]
       parameters:
         - name: chain_id
           in: path
@@ -598,10 +599,10 @@ paths:
         **Async path** (`batch_window > 0`): responds `queued` (HTTP 202)
         immediately; the transaction is broadcast in the next batch window.
       operationId: pour
-      tags: [faucet]
+      tags: [ faucet ]
       security:
-        - {}
-        - apiKey: []
+        - { }
+        - apiKey: [ ]
       requestBody:
         required: true
         content:
@@ -704,7 +705,7 @@ paths:
         `challenge` + `solution` pair in `pow` when calling `POST /v1/pour`.
         Only available when `abuse.pow.enabled = true`.
       operationId: getPowChallenge
-      tags: [auth]
+      tags: [ auth ]
       responses:
         "200":
           description: Challenge issued.
@@ -727,7 +728,7 @@ paths:
         Include the nonce and resulting signature in `signature` when calling
         `POST /v1/pour`. Only available when `abuse.signature_challenge.enabled = true`.
       operationId: getSignNonce
-      tags: [auth]
+      tags: [ auth ]
       responses:
         "200":
           description: Nonce issued.
@@ -749,9 +750,9 @@ paths:
       summary: Registry snapshot
       description: Full resolved view of all chains in the registry store, including pending and frozen entries.
       operationId: adminRegistrySnapshot
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       responses:
         "200":
           description: OK
@@ -764,15 +765,17 @@ paths:
                   description: Resolved chain registry entry.
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
 
   /admin/registry/pending:
     get:
       summary: Pending registry changes
       description: Returns field-level changes from the latest registry fetch that have not yet been accepted.
       operationId: adminRegistryPending
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       responses:
         "200":
           description: OK
@@ -785,6 +788,8 @@ paths:
                   description: Pending change entry.
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
 
   /admin/registry/accept:
     post:
@@ -794,9 +799,9 @@ paths:
         to accept one specific field, or omit it to accept all pending changes for
         the chain.
       operationId: adminRegistryAccept
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       requestBody:
         required: true
         content:
@@ -814,6 +819,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Chain or pending field not found.
           content:
@@ -826,9 +833,9 @@ paths:
       summary: Force registry refresh
       description: Triggers an immediate fetch from the chain registry, applies changes, and reconciles connections.
       operationId: adminRegistryRefresh
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       responses:
         "200":
           description: Refresh completed.
@@ -838,6 +845,8 @@ paths:
                 $ref: '#/components/schemas/RefreshResponse'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "502":
           description: Registry fetch failed.
           content:
@@ -853,9 +862,9 @@ paths:
         Chains newly added to the registry that were absent at startup require a
         full process restart.
       operationId: adminReload
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       responses:
         "200":
           description: Config reloaded.
@@ -865,6 +874,8 @@ paths:
                 $ref: '#/components/schemas/OkResponse'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "422":
           description: Config file is invalid.
           content:
@@ -879,9 +890,9 @@ paths:
       summary: List distributors
       description: Returns per-distributor state including live on-chain balances.
       operationId: adminDistributorList
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: chain
           in: path
@@ -896,7 +907,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [distributors]
+                required: [ distributors ]
                 properties:
                   distributors:
                     type: array
@@ -904,6 +915,8 @@ paths:
                       $ref: '#/components/schemas/DistributorState'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ChainNotFound'
 
@@ -914,9 +927,9 @@ paths:
         Transfers tokens from the holder (key 0) to the specified distributor.
         Omit `index` to refill all distributors that are below the refill threshold.
       operationId: adminDistributorRefill
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: chain
           in: path
@@ -935,7 +948,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [results]
+                required: [ results ]
                 properties:
                   results:
                     type: array
@@ -945,6 +958,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ChainNotFound'
 
@@ -955,9 +970,9 @@ paths:
       summary: Read gas cache
       description: Returns the current gas estimation cache entry for the chain.
       operationId: adminGasCacheGet
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: chain
           in: path
@@ -973,6 +988,8 @@ paths:
                 $ref: '#/components/schemas/GasCacheRow'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Chain not found or no gas cache entry yet.
           content:
@@ -985,9 +1002,9 @@ paths:
       summary: Reset gas cache
       description: Clears the gas estimation cache for the chain, forcing fresh estimation on the next broadcast.
       operationId: adminGasCacheReset
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: chain
           in: path
@@ -1003,6 +1020,8 @@ paths:
                 $ref: '#/components/schemas/OkResponse'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ChainNotFound'
 
@@ -1011,9 +1030,9 @@ paths:
       summary: Chain status
       description: Returns operational flags for the chain (suspended, fail streaks, multi-send state).
       operationId: adminChainStatusGet
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: chain
           in: path
@@ -1029,6 +1048,8 @@ paths:
                 $ref: '#/components/schemas/ChainStatus'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ChainNotFound'
 
@@ -1037,9 +1058,9 @@ paths:
       summary: Resume a suspended chain
       description: Clears the suspended flag and resets failure streaks. No-op if the chain is not suspended.
       operationId: adminChainResume
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: chain
           in: path
@@ -1055,6 +1076,8 @@ paths:
                 $ref: '#/components/schemas/OkResponse'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ChainNotFound'
         "409":
@@ -1073,9 +1096,9 @@ paths:
         Issues a new API key. The `secret` field in the response is the full
         bearer token (`pour_key_*`) and is returned **once only** — store it securely.
       operationId: adminCreateAPIKey
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       requestBody:
         required: true
         content:
@@ -1093,14 +1116,16 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
 
     get:
       summary: List API keys
       description: Returns all non-revoked keys. Secrets are never included.
       operationId: adminListAPIKeys
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       responses:
         "200":
           description: OK
@@ -1108,7 +1133,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [keys]
+                required: [ keys ]
                 properties:
                   keys:
                     type: array
@@ -1116,15 +1141,17 @@ paths:
                       $ref: '#/components/schemas/APIKey'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
 
   /admin/api-keys/{id}:
     delete:
       summary: Revoke API key
       description: Permanently revokes the key. Revoked keys are rejected immediately.
       operationId: adminRevokeAPIKey
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       parameters:
         - name: id
           in: path
@@ -1140,6 +1167,8 @@ paths:
                 $ref: '#/components/schemas/OkResponse'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Key not found.
           content:
@@ -1155,9 +1184,9 @@ paths:
         invalidates the previous token immediately. The new token is returned
         once in the response — store it before the connection closes.
       operationId: adminRotateToken
-      tags: [admin]
+      tags: [ admin ]
       security:
-        - adminToken: []
+        - adminToken: [ ]
       responses:
         "200":
           description: New token generated.
@@ -1165,10 +1194,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [token]
+                required: [ token ]
                 properties:
                   token:
                     type: string
                     description: New admin bearer token (prefix `pour_admin_`).
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'

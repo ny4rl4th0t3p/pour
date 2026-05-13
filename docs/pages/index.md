@@ -49,13 +49,16 @@ Node.js for the web UI, or require the cosmos-sdk as a Go library. pour takes a 
 > **Active development.** The API, config schema, and CLI flags are not stable until v1.0.0.
 > Pre-1.0 minor releases may add config keys but aim not to remove or rename existing ones.
 
-| Version | Milestone                                                          |
-|---------|--------------------------------------------------------------------|
-| v0.1.0  | Single-chain drip, embedded UI, IP rate limiting                   |
-| v0.2.0  | Chain registry integration, multi-chain runtime, admin API         |
-| v0.3.0  | Batch window, multiple distributor wallets, gRPC endpoint failover |
-| v0.4.0  | PoW challenge, API keys, signed-wallet authentication              |
-| v0.5.0  | IBC plumbing                                                       |
-| v0.6.0  | IBC drips                                                          |
-| v0.7.0  | Local devnet auto-configure (`pour serve --auto --home`)           |
-| v0.8.0  | REST/LCD transport, gRPC→REST failover                             |
+| Version | Milestone                                                                                              |
+|---------|--------------------------------------------------------------------------------------------------------|
+| v0.1.0  | Single-chain drip, embedded UI, IP rate limiting                                                       |
+| v0.2.0  | Chain registry integration, multi-chain runtime, admin API                                             |
+| v0.3.0  | Batch window, multiple distributor wallets, gRPC endpoint failover                                     |
+| v0.4.0  | PoW challenge, API keys, signed-wallet authentication                                                  |
+| v0.5.0  | IBC plumbing                                                                                           |
+| v0.6.0  | IBC drips                                                                                              |
+| v0.7.0  | Local devnet auto-configure (`pour serve --auto --home`)                                               |
+| v0.8.0  | REST/LCD transport, gRPC→REST failover                                                                 |
+| v0.8.1  | Documentation site launch, refill bug fixes                                                            |
+| v0.8.2  | OpenAPI spec accuracy, admin CLI completeness (`chains status`, `api-keys` create flags + list fields) |
+| v0.8.3  | *(planned)* smoke test coverage for admin API key endpoints                                            |

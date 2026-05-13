@@ -6,6 +6,12 @@
 A pure-Go, multi-chain Cosmos faucet. Single static binary, no Node, no CGO, no shelling out to chain CLIs. Builds and
 broadcasts transactions via raw protobuf over gRPC or REST — no cosmos-sdk import required.
 
+*One of three operator tools I've built for Cosmos SDK chains. The others are
+[gentool](https://github.com/ny4rl4th0t3p/cosmos-genesis-tool) (deterministic
+genesis file generation) and [chaincoord](https://github.com/ny4rl4th0t3p/chaincoord)
+(multi-party launch coordination). Together they cover the painful workflows of
+launching and running a Cosmos chain. All three are Apache 2.0 and self-hostable.*
+
 **Highlights:**
 
 - Chains sourced from [cosmos/chain-registry](https://github.com/cosmos/chain-registry) and cached locally — add a
@@ -13,7 +19,7 @@ broadcasts transactions via raw protobuf over gRPC or REST — no cosmos-sdk imp
 - Standalone mode for chains not in the public registry (local devnets, private testnets)
 - Multiple distributor wallets reduce sequence-number contention under high load; holder auto-refills them at startup
 - Priority-ordered abuse gate: API key → signed wallet (ADR-036) → proof-of-work (Altcha) → anonymous
-- Per-address daily cap enforced across all bech32 prefixes sharing the same underlying key
+- Per-address daily cap keyed on raw address bytes, so a chain prefix migration cannot reset a user's allowance
 - Embedded web UI, Prometheus metrics, hot-reload config, admin API
 
 📖 **[Full documentation](https://ny4rl4th0t3p.github.io/pour)**
@@ -95,6 +101,10 @@ make build && cd e2e && POUR_BIN=../pour go test -v -timeout 20m ./...
 - [x] **v0.6.0** — IBC drips
 - [x] **v0.7.0** — local devnet auto-configure (`pour serve --auto --home`)
 - [x] **v0.8.0** — REST/LCD transport (gRPC→REST failover)
+- [x] **v0.8.1** — documentation site launch, refill bug fixes
+- [x] **v0.8.2** — OpenAPI spec accuracy, admin CLI completeness (`chains status`, `api-keys` create flags + list
+  fields)
+- [ ] **v0.8.3** — smoke test coverage for admin API key endpoints
 - [ ] **v1.0.0** — stable: API and config schema frozen under semver guarantees
 
 ## License

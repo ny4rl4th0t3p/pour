@@ -61,8 +61,8 @@ chains:
 ```
 
 !!! tip
-    Chains used only as predicate sources for the signed-wallet mechanism should have
-    `enabled: false` — enabling them opens a drip endpoint for a chain that has no funds.
+Chains used only as predicate sources for the signed-wallet mechanism should have
+`enabled: false` — enabling them opens a drip endpoint for a chain that has no funds.
 
 ## Channel selection
 
