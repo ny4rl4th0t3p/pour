@@ -101,14 +101,14 @@ pour serve --auto --home ~/.simapp --fund-mnemonic "word word word ..."
 
 ## What gets auto-configured
 
-| Field                          | Source                                                     |
-|--------------------------------|------------------------------------------------------------|
-| `chain_id`                     | `genesis.json → chain_id`                                  |
-| `bech32_prefix`                | `genesis.json → app_state.auth` (account prefix)           |
-| `native_denom`                 | First denom from `genesis.json → app_state.bank.supply`    |
-| `slip44`                       | Always `118` (standard Cosmos coin type)                   |
-| `drip.anonymous`               | `--drip` flag or `1000000<denom>`                          |
-| `drip.max_per_address_per_day` | `10 × drip.anonymous`                                      |
-| `batch_window`                 | `"0s"` (synchronous — recommended for single-node devnets) |
-| `endpoints.grpc`               | `--grpc` flag                                              |
-| `endpoints.rest`               | `--rest` flag (if set)                                     |
+| Field                          | Source                                                                                 |
+|--------------------------------|----------------------------------------------------------------------------------------|
+| `chain_id`                     | `genesis.json → chain_id`                                                              |
+| `bech32_prefix`                | Inferred from the HRP of the first address in `genesis.json → app_state.bank.balances` |
+| `native_denom`                 | `genesis.json → app_state.staking.params.bond_denom`                                   |
+| `slip44`                       | Always `118` (standard Cosmos coin type)                                               |
+| `drip.anonymous`               | `--drip` flag or `1000000<denom>`                                                      |
+| `drip.max_per_address_per_day` | `10 × drip.anonymous`                                                                  |
+| `batch_window`                 | `"0s"` (synchronous — recommended for single-node devnets)                             |
+| `endpoints.grpc`               | `--grpc` flag                                                                          |
+| `endpoints.rest`               | `--rest` flag (if set)                                                                 |

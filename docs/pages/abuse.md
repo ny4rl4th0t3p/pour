@@ -14,8 +14,7 @@ or invalid, the request is rejected.
 | 4        | **Anonymous**     | `drip.anonymous`                               | No credential — allowed only when all others are disabled |
 
 The **per-address daily cap** (`drip.max_per_address_per_day`) is always enforced, regardless of
-mechanism. The same public key is recognised across all bech32 prefixes (cosmos1…, osmo1…, etc.),
-so switching prefixes cannot bypass the cap.
+mechanism. The cap is per chain and keyed on raw address bytes.
 
 ---
 
