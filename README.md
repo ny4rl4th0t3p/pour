@@ -19,6 +19,7 @@ launching and running a Cosmos chain. All three are Apache 2.0 and self-hostable
 - Standalone mode for chains not in the public registry (local devnets, private testnets)
 - Multiple distributor wallets reduce sequence-number contention under high load; holder auto-refills them as they
   drain.
+- IBC drips: send tokens to recipients on any IBC-connected chain via `MsgTransfer`
 - Priority-ordered abuse gate: API key → signed wallet (ADR-036) → proof-of-work (Altcha) → anonymous
 - Per-address daily cap keyed on raw address bytes, so a chain prefix migration cannot reset a user's allowance
 - Embedded web UI, Prometheus metrics, hot-reload config, admin API
@@ -105,7 +106,7 @@ make build && cd e2e && POUR_BIN=../pour go test -v -timeout 20m ./...
 - [x] **v0.8.1** — documentation site launch, refill bug fixes
 - [x] **v0.8.2** — OpenAPI spec accuracy, admin CLI completeness (`chains status`, `api-keys` create flags + list
   fields)
-- [ ] **v0.8.3** — smoke test coverage for admin API key endpoints
+- [ ] **v0.9.0** — per-coin IBC routing: source-only chains, multi-denom IBC drip configs
 - [ ] **v1.0.0** — stable: API and config schema frozen under semver guarantees
 
 ## License
