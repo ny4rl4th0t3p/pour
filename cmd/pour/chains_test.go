@@ -25,9 +25,9 @@ func TestChainsValidateCmd(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "missing drip.anonymous",
+			name:    "source-only registry chain (no drip, no ibc.drips)",
 			config:  "testdata/invalid-missing-drip.yml",
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "standalone missing bech32_prefix",
