@@ -52,37 +52,14 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "no IBC drip configured for denom")
 			return
 		}
-		cc, err := buildChainContextIBC(snap, ibcDrip)
-		if err != nil {
-			slog.ErrorContext(r.Context(), "pour: invalid IBC drip config", "chain_id", req.ChainID, "error", err)
-			writeError(w, http.StatusInternalServerError, "invalid drip config")
-			return
-		}
-		decision, err := h.gate.Admit(r.Context(), r, &req, cc)
-		if err != nil {
-			h.handleAdmitError(w, req.ChainID, err)
-			return
-		}
-		h.pourIBC(w, r, snap, req.Address, decision, ibcDrip)
+		h.admitAndServeIBC(w, r, &req, snap, ibcDrip)
 		return
 	}
 
 	if snap.Drip.Anonymous == "" {
 		// IBC-only chain with no denom specified — check if exactly one IBC drip exists.
 		if len(snap.IBCDrips) == 1 {
-			ibcDrip := snap.IBCDrips[0]
-			cc, err := buildChainContextIBC(snap, ibcDrip)
-			if err != nil {
-				slog.ErrorContext(r.Context(), "pour: invalid IBC drip config", "chain_id", req.ChainID, "error", err)
-				writeError(w, http.StatusInternalServerError, "invalid drip config")
-				return
-			}
-			decision, err := h.gate.Admit(r.Context(), r, &req, cc)
-			if err != nil {
-				h.handleAdmitError(w, req.ChainID, err)
-				return
-			}
-			h.pourIBC(w, r, snap, req.Address, decision, ibcDrip)
+			h.admitAndServeIBC(w, r, &req, snap, snap.IBCDrips[0])
 			return
 		}
 		pourRequestsTotal.WithLabelValues(req.ChainID, "denom_required").Inc()
@@ -117,6 +94,28 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.pourSync(w, r, req.ChainID, req.Address, coins, amount, ip, mechanism, now)
+}
+
+// admitAndServeIBC runs the abuse gate for an IBC drip and, if admitted, calls pourIBC.
+func (h *Handler) admitAndServeIBC(
+	w http.ResponseWriter,
+	r *http.Request,
+	req *pourapi.PourRequest,
+	snap chain.ChainSnapshot,
+	ibcDrip config.IBCDripConfig,
+) {
+	cc, err := buildChainContextIBC(snap, ibcDrip)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "pour: invalid IBC drip config", "chain_id", req.ChainID, "error", err)
+		writeError(w, http.StatusInternalServerError, "invalid drip config")
+		return
+	}
+	decision, err := h.gate.Admit(r.Context(), r, req, cc)
+	if err != nil {
+		h.handleAdmitError(w, req.ChainID, err)
+		return
+	}
+	h.pourIBC(w, r, snap, req.Address, decision, ibcDrip)
 }
 
 // findIBCDrip returns the IBCDripConfig whose anonymous coin's denom matches denom.

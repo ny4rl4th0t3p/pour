@@ -399,7 +399,12 @@ func validateIBCSources(chains []ChainConfig) error {
 				return fmt.Errorf("config: chain %q: ibc.drips[%d]: source_chain_id %q not found in chains list", chains[i].ChainID, j, src)
 			}
 			if ibcOnlyDest[src] {
-				return fmt.Errorf("config: chain %q: ibc.drips[%d]: source_chain_id %q is an IBC-only destination (no endpoints); it cannot broadcast MsgTransfer", chains[i].ChainID, j, src)
+				return fmt.Errorf(
+					"config: chain %q: ibc.drips[%d]: source_chain_id %q is an IBC-only destination (no endpoints); it cannot broadcast MsgTransfer",
+					chains[i].ChainID,
+					j,
+					src,
+				)
 			}
 		}
 	}
@@ -439,6 +444,14 @@ func validateChain(i int, chain *ChainConfig) error {
 	if !chain.IsEnabled() {
 		return nil
 	}
+	if err := validateDripBlock(chain); err != nil {
+		return err
+	}
+	return validateIBCDripEntries(chain)
+}
+
+// validateDripBlock validates the drip block fields for an enabled chain.
+func validateDripBlock(chain *ChainConfig) error {
 	hasNative := chain.Drip.Anonymous != ""
 	// A chain with neither drip.anonymous nor ibc.drips is a source-only chain:
 	// it broadcasts MsgTransfer for another chain's ibc.drips but serves no native drips.
@@ -447,17 +460,23 @@ func validateChain(i int, chain *ChainConfig) error {
 	if !hasNative && (chain.Drip.MaxPerAddressPerDay != "" || chain.Drip.Signed != "" || chain.Drip.Memo != "") {
 		return fmt.Errorf("config: chain %q: drip.anonymous is required when other drip fields are set", chain.ChainID)
 	}
-	if hasNative {
-		if _, err := ParseCoin(chain.Drip.Anonymous); err != nil {
-			return fmt.Errorf("config: chain %q: drip.anonymous: %w", chain.ChainID, err)
-		}
-		if chain.Drip.MaxPerAddressPerDay == "" {
-			return fmt.Errorf("config: chain %q: drip.max_per_address_per_day is required when drip.anonymous is set", chain.ChainID)
-		}
-		if _, err := ParseCoin(chain.Drip.MaxPerAddressPerDay); err != nil {
-			return fmt.Errorf("config: chain %q: drip.max_per_address_per_day: %w", chain.ChainID, err)
-		}
+	if !hasNative {
+		return nil
 	}
+	if _, err := ParseCoin(chain.Drip.Anonymous); err != nil {
+		return fmt.Errorf("config: chain %q: drip.anonymous: %w", chain.ChainID, err)
+	}
+	if chain.Drip.MaxPerAddressPerDay == "" {
+		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day is required when drip.anonymous is set", chain.ChainID)
+	}
+	if _, err := ParseCoin(chain.Drip.MaxPerAddressPerDay); err != nil {
+		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day: %w", chain.ChainID, err)
+	}
+	return nil
+}
+
+// validateIBCDripEntries validates each ibc.drips entry for an enabled chain.
+func validateIBCDripEntries(chain *ChainConfig) error {
 	for j, drip := range chain.IBC.Drips {
 		if drip.Anonymous == "" {
 			return fmt.Errorf("config: chain %q: ibc.drips[%d]: anonymous is required", chain.ChainID, j)
