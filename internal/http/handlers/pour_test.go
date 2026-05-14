@@ -15,6 +15,7 @@ import (
 	"github.com/ny4rl4th0t3p/pour/internal/abuse/ratelimit"
 	"github.com/ny4rl4th0t3p/pour/internal/batch"
 	"github.com/ny4rl4th0t3p/pour/internal/chain"
+	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/internal/store"
 	"github.com/ny4rl4th0t3p/pour/internal/tx"
 	"github.com/ny4rl4th0t3p/pour/pkg/chainregistry"
@@ -527,7 +528,12 @@ func ibcTestSource(ibcTransferResult tx.TransferResult, ibcTransferErr error, wi
 					Anonymous:           "1000000uosmo",
 					MaxPerAddressPerDay: "50000000uosmo",
 				},
-				IBCSourceChainID: "simapp-a-1",
+				// IBC drip: transfer uatom from simapp-a-1 to simapp-b-1 recipients.
+				IBCDrips: []config.IBCDripConfig{{
+					SourceChainID:       "simapp-a-1",
+					Anonymous:           "1000000uatom",
+					MaxPerAddressPerDay: "50000000uatom",
+				}},
 			},
 			"simapp-a-1": {
 				Info: &chainregistry.ChainInfo{
@@ -562,7 +568,8 @@ func TestPour_IBCRoute(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+	// denom=uatom selects the IBC drip path.
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg","denom":"uatom"}`))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status: got %d, want 200", w.Code)
@@ -595,7 +602,7 @@ func TestPour_IBCRoute_NoChannel(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg","denom":"uatom"}`))
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d, want 503", w.Code)
@@ -610,8 +617,7 @@ func TestPour_IBCRoute_NoChannel(t *testing.T) {
 }
 
 func TestPour_IBCRoute_SourceNotActive(t *testing.T) {
-	// dest chain exists but its source chain is not registered — simulates a
-	// misconfigured or not-yet-started source chain.
+	// dest chain exists with an IBC drip but its source chain is not registered.
 	src := &stubChainSource{
 		snaps: map[string]chain.ChainSnapshot{
 			"simapp-b-1": {
@@ -626,7 +632,11 @@ func TestPour_IBCRoute_SourceNotActive(t *testing.T) {
 					Anonymous:           "1000000uosmo",
 					MaxPerAddressPerDay: "50000000uosmo",
 				},
-				IBCSourceChainID: "simapp-a-1",
+				IBCDrips: []config.IBCDripConfig{{
+					SourceChainID:       "simapp-a-1",
+					Anonymous:           "1000000uatom",
+					MaxPerAddressPerDay: "50000000uatom",
+				}},
 			},
 			// simapp-a-1 intentionally absent
 		},
@@ -639,7 +649,7 @@ func TestPour_IBCRoute_SourceNotActive(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg","denom":"uatom"}`))
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status: got %d, want 503", w.Code)
@@ -663,7 +673,7 @@ func TestPour_IBCRoute_TransferError(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg"}`))
+	h.Pour(w, pourRequest(`{"chain_id":"simapp-b-1","address":"cosmos1abc123defg","denom":"uatom"}`))
 
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("status: got %d, want 502", w.Code)

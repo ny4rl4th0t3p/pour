@@ -92,10 +92,13 @@ chains:
     # refill_threshold: ""              # min distributor balance; default: drip.anonymous × 10
     # refill_interval: "1m"             # how often to check distributor balances
 
-    # IBC (optional)
+    # IBC drips (optional) — offer IBC vouchers sourced from another chain
     # ibc:
-    #   source_chain_id: osmosis-1    # tokens are sent from osmosis-1
-    #   timeout: 10m                     # MsgTransfer timeout; default 10m
+    #   timeout: 10m                  # MsgTransfer timeout; default 10m
+    #   drips:
+    #     - source_chain_id: cosmoshub-4
+    #       anonymous: "1000000uatom"
+    #       max_per_address_per_day: "10000000uatom"
 ```
 
 ### Standalone chain
@@ -128,20 +131,28 @@ chains:
 
 ### IBC destination chain
 
-Pour holds tokens on a source chain and sends them via `MsgTransfer`.
-The destination chain needs no endpoints — the source chain's wallet is used.
+Pour holds tokens on the source chain and delivers them via `MsgTransfer`. The source chain
+does not need a `drip` block — omitting it makes it source-only, so it broadcasts
+`MsgTransfer` but does not serve native drips itself. The destination chain can be IBC-only
+(no endpoints or native wallet) or carry both native and IBC drips simultaneously —
+controlled per-request via the `denom` field.
 
 ```yaml
 chains:
-  - chain_id: cosmoshub-4
+  - chain_id: osmosis-1             # source — holds tokens, fires MsgTransfer
+    enabled: true                   # no drip block: source-only, not a public faucet
+
+  - chain_id: mynet-1               # destination — receives IBC vouchers
     enabled: true
-    drip:
-      anonymous: "1000000uatom"
-      max_per_address_per_day: "10000000uatom"
     ibc:
-      source_chain_id: osmosis-1    # tokens are sent from osmosis-1
-      timeout: 10m                  # MsgTransfer timeout
+      timeout: 10m
+      drips:
+        - source_chain_id: osmosis-1
+          anonymous: "1000000uosmo"
+          max_per_address_per_day: "10000000uosmo"
 ```
+
+See [IBC drips](ibc.md) for the full reference including dual native+IBC chains.
 
 ---
 
@@ -195,11 +206,14 @@ Pour uses `average_gas_price` for fee estimation. Required for standalone chains
 
 ### `drip`
 
-| Field                     | Description                                                                                                     |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------|
-| `anonymous`               | Drip amount for anonymous, PoW, and default API-key requests. Coin string, e.g. `"1000000uosmo"`. **Required.** |
-| `signed`                  | Drip amount for signed-wallet requests. Optional — falls back to `anonymous`.                                   |
-| `max_per_address_per_day` | Per-address daily cap. **Required.**                                                                            |
+| Field                     | Description                                                                                                                        |
+|---------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| `anonymous`               | Drip amount for anonymous, PoW, and default API-key requests. Coin string, e.g. `"1000000uosmo"`. Required for native drip chains. |
+| `signed`                  | Drip amount for signed-wallet requests. Optional — falls back to `anonymous`.                                                      |
+| `max_per_address_per_day` | Per-address daily cap. Required when `anonymous` is set.                                                                           |
+
+Omit the entire `drip` block to make a chain source-only: it can broadcast `MsgTransfer`
+for other chains' IBC drips but will not serve native drip requests.
 
 API keys can individually override the drip amount via `per_chain_drips` at creation time; keys without an override
 inherit `anonymous`. See [Abuse & auth — API keys](abuse.md#api-keys).

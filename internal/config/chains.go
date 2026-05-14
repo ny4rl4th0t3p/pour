@@ -165,10 +165,20 @@ type ChainConfig struct {
 // IBCConfig holds per-chain IBC transfer settings.
 type IBCConfig struct {
 	Timeout string `koanf:"timeout"` // Go duration string, e.g. "10m"; default 10m
-	// SourceChainID, when non-empty, marks this chain as an IBC destination: pour
-	// transfers tokens from the source chain's wallet to recipients on this chain.
-	// The source chain must be another chain_id in the same config.
-	SourceChainID string `koanf:"source_chain_id"`
+	// Drips is a list of IBC drip configurations. Each entry defines a token that is
+	// transferred to this chain from a source chain via MsgTransfer. The recipient on
+	// this chain receives the IBC-wrapped voucher (ibc/...). This chain's own wallet
+	// is only required if drip.anonymous is also set (native drip).
+	Drips []IBCDripConfig `koanf:"drips"`
+}
+
+// IBCDripConfig configures a single IBC drip token for a destination chain.
+// source_chain_id must reference another chain_id in the same config that is NOT
+// itself IBC-only (it must have native drip capability to broadcast MsgTransfer).
+type IBCDripConfig struct {
+	SourceChainID       string `koanf:"source_chain_id"`
+	Anonymous           string `koanf:"anonymous"`
+	MaxPerAddressPerDay string `koanf:"max_per_address_per_day"`
 }
 
 // IsEnabled reports whether the chain is explicitly enabled.
@@ -359,26 +369,43 @@ func LoadChains(path string) (*ChainsConfig, error) {
 	return &cfg, nil
 }
 
-// validateIBCSources checks cross-chain ibc.source_chain_id references.
+// validateIBCSources checks cross-chain ibc.drips[].source_chain_id references.
 func validateIBCSources(chains []ChainConfig) error {
 	ids := make(map[string]bool, len(chains))
-	ibcSources := make(map[string]bool, len(chains)) // chain IDs that are IBC destinations
+	// ibcOnlyDest tracks standalone chains that are IBC-only destinations: no native drip
+	// and no endpoints. Such chains receive tokens via MsgTransfer but cannot broadcast
+	// transactions themselves, so they are invalid as IBC source chains.
+	ibcOnlyDest := make(map[string]bool, len(chains))
 	for i := range chains {
 		ids[chains[i].ChainID] = true
-		if chains[i].IBC.SourceChainID != "" {
-			ibcSources[chains[i].ChainID] = true
+		if chains[i].Drip.Anonymous == "" && chains[i].Standalone {
+			hasEndpoints := chains[i].Endpoints != nil &&
+				(len(chains[i].Endpoints.GRPC) > 0 || len(chains[i].Endpoints.REST) > 0)
+			if !hasEndpoints {
+				ibcOnlyDest[chains[i].ChainID] = true
+			}
 		}
 	}
 	for i := range chains {
-		src := chains[i].IBC.SourceChainID
-		if src == "" {
-			continue
-		}
-		if !ids[src] {
-			return fmt.Errorf("config: chain %q: ibc.source_chain_id %q not found in chains list", chains[i].ChainID, src)
-		}
-		if ibcSources[src] {
-			return fmt.Errorf("config: chain %q: ibc.source_chain_id %q cannot itself be an IBC destination chain", chains[i].ChainID, src)
+		for j, drip := range chains[i].IBC.Drips {
+			src := drip.SourceChainID
+			if src == "" {
+				return fmt.Errorf("config: chain %q: ibc.drips[%d]: source_chain_id is required", chains[i].ChainID, j)
+			}
+			if src == chains[i].ChainID {
+				return fmt.Errorf("config: chain %q: ibc.drips[%d]: source_chain_id must not equal the chain's own ID", chains[i].ChainID, j)
+			}
+			if !ids[src] {
+				return fmt.Errorf("config: chain %q: ibc.drips[%d]: source_chain_id %q not found in chains list", chains[i].ChainID, j, src)
+			}
+			if ibcOnlyDest[src] {
+				return fmt.Errorf(
+					"config: chain %q: ibc.drips[%d]: source_chain_id %q is an IBC-only destination (no endpoints); it cannot broadcast MsgTransfer",
+					chains[i].ChainID,
+					j,
+					src,
+				)
+			}
 		}
 	}
 	return nil
@@ -417,17 +444,52 @@ func validateChain(i int, chain *ChainConfig) error {
 	if !chain.IsEnabled() {
 		return nil
 	}
-	if chain.Drip.Anonymous == "" {
-		return fmt.Errorf("config: chain %q: drip.anonymous is required", chain.ChainID)
+	if err := validateDripBlock(chain); err != nil {
+		return err
+	}
+	return validateIBCDripEntries(chain)
+}
+
+// validateDripBlock validates the drip block fields for an enabled chain.
+func validateDripBlock(chain *ChainConfig) error {
+	hasNative := chain.Drip.Anonymous != ""
+	// A chain with neither drip.anonymous nor ibc.drips is a source-only chain:
+	// it broadcasts MsgTransfer for another chain's ibc.drips but serves no native drips.
+	// For standalone chains, validateStandalone enforces that endpoints are configured.
+	// For registry chains, endpoints are resolved from the registry at startup.
+	if !hasNative && (chain.Drip.MaxPerAddressPerDay != "" || chain.Drip.Signed != "" || chain.Drip.Memo != "") {
+		return fmt.Errorf("config: chain %q: drip.anonymous is required when other drip fields are set", chain.ChainID)
+	}
+	if !hasNative {
+		return nil
 	}
 	if _, err := ParseCoin(chain.Drip.Anonymous); err != nil {
 		return fmt.Errorf("config: chain %q: drip.anonymous: %w", chain.ChainID, err)
 	}
 	if chain.Drip.MaxPerAddressPerDay == "" {
-		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day is required", chain.ChainID)
+		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day is required when drip.anonymous is set", chain.ChainID)
 	}
 	if _, err := ParseCoin(chain.Drip.MaxPerAddressPerDay); err != nil {
 		return fmt.Errorf("config: chain %q: drip.max_per_address_per_day: %w", chain.ChainID, err)
+	}
+	return nil
+}
+
+// validateIBCDripEntries validates each ibc.drips entry for an enabled chain.
+func validateIBCDripEntries(chain *ChainConfig) error {
+	for j, drip := range chain.IBC.Drips {
+		if drip.Anonymous == "" {
+			return fmt.Errorf("config: chain %q: ibc.drips[%d]: anonymous is required", chain.ChainID, j)
+		}
+		if _, err := ParseCoin(drip.Anonymous); err != nil {
+			return fmt.Errorf("config: chain %q: ibc.drips[%d]: anonymous: %w", chain.ChainID, j, err)
+		}
+		if drip.MaxPerAddressPerDay == "" {
+			return fmt.Errorf("config: chain %q: ibc.drips[%d]: max_per_address_per_day is required", chain.ChainID, j)
+		}
+		if _, err := ParseCoin(drip.MaxPerAddressPerDay); err != nil {
+			return fmt.Errorf("config: chain %q: ibc.drips[%d]: max_per_address_per_day: %w", chain.ChainID, j, err)
+		}
 	}
 	return nil
 }
@@ -441,7 +503,11 @@ func validateStandalone(chain *ChainConfig) error {
 	}
 	hasGRPC := chain.Endpoints != nil && len(chain.Endpoints.GRPC) > 0
 	hasREST := chain.Endpoints != nil && len(chain.Endpoints.REST) > 0
-	if !hasGRPC && !hasREST && chain.IBC.SourceChainID == "" {
+	// Chains that broadcast transactions need endpoints: native drip chains (MsgSend)
+	// and source-only chains (MsgTransfer). IBC-only destination chains (ibc.drips set,
+	// no native drip) receive tokens passively and can omit endpoints.
+	needsEndpoints := chain.Drip.Anonymous != "" || len(chain.IBC.Drips) == 0
+	if !hasGRPC && !hasREST && needsEndpoints {
 		return fmt.Errorf("config: standalone chain %q: at least one endpoints.grpc or endpoints.rest is required", chain.ChainID)
 	}
 	if len(chain.FeeTokens) == 0 {

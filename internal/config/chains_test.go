@@ -202,6 +202,7 @@ chains:
 }
 
 func TestLoadChains_standalone_missingGRPC(t *testing.T) {
+	// A standalone chain with drip.anonymous must have at least one endpoint.
 	yml := `
 chains:
   - chain_id: mynet-1
@@ -210,6 +211,10 @@ chains:
     slip44: 118
     fee_tokens:
       - denom: umynet
+        average_gas_price: "0.025"
+    drip:
+      anonymous: "1000000umynet"
+      max_per_address_per_day: "10000000umynet"
 `
 	_, err := LoadChains(writeTemp(t, yml))
 	if err == nil {
@@ -949,20 +954,30 @@ chains:
       anonymous: "1000000uosmo"
       max_per_address_per_day: "10000000uosmo"
     ibc:
-      source_chain_id: simapp-a-1
+      drips:
+        - source_chain_id: simapp-a-1
+          anonymous: "1000000uatom"
+          max_per_address_per_day: "10000000uatom"
 `
 
-func TestIBCSourceChainID_valid(t *testing.T) {
+func TestIBCDrips_valid(t *testing.T) {
 	cfg, err := LoadChains(writeTemp(t, validTwoChainYAML))
 	if err != nil {
 		t.Fatalf("LoadChains: %v", err)
 	}
-	if got := cfg.Chains[1].IBC.SourceChainID; got != "simapp-a-1" {
-		t.Errorf("IBC.SourceChainID: got %q, want simapp-a-1", got)
+	drips := cfg.Chains[1].IBC.Drips
+	if len(drips) != 1 {
+		t.Fatalf("IBC.Drips: got %d entries, want 1", len(drips))
+	}
+	if got := drips[0].SourceChainID; got != "simapp-a-1" {
+		t.Errorf("IBC.Drips[0].SourceChainID: got %q, want simapp-a-1", got)
+	}
+	if got := drips[0].Anonymous; got != "1000000uatom" {
+		t.Errorf("IBC.Drips[0].Anonymous: got %q, want 1000000uatom", got)
 	}
 }
 
-func TestIBCSourceChainID_unknownSource(t *testing.T) {
+func TestIBCDrips_unknownSource(t *testing.T) {
 	yml := `
 chains:
   - chain_id: simapp-a-1
@@ -971,7 +986,10 @@ chains:
       anonymous: "1000000stake"
       max_per_address_per_day: "10000000stake"
     ibc:
-      source_chain_id: nonexistent-1
+      drips:
+        - source_chain_id: nonexistent-1
+          anonymous: "1000000uatom"
+          max_per_address_per_day: "10000000uatom"
 `
 	_, err := LoadChains(writeTemp(t, yml))
 	if err == nil {
@@ -982,7 +1000,9 @@ chains:
 	}
 }
 
-func TestIBCSourceChainID_chainedSources(t *testing.T) {
+func TestIBCDrips_ibcOnlyDestinationCannotBeSource(t *testing.T) {
+	// chain-b-1 is a standalone IBC-only destination: no endpoints, no native drip.
+	// It receives tokens passively via MsgTransfer and cannot broadcast MsgTransfer itself.
 	yml := `
 chains:
   - chain_id: chain-a-1
@@ -991,18 +1011,117 @@ chains:
       anonymous: "1000000stake"
       max_per_address_per_day: "10000000stake"
     ibc:
-      source_chain_id: chain-b-1
+      drips:
+        - source_chain_id: chain-b-1
+          anonymous: "1000000uatom"
+          max_per_address_per_day: "10000000uatom"
   - chain_id: chain-b-1
+    standalone: true
+    enabled: true
+    bech32_prefix: cosmos
+    slip44: 118
+    fee_tokens:
+      - denom: uatom
+        average_gas_price: "0.025"
+    ibc:
+      drips:
+        - source_chain_id: chain-a-1
+          anonymous: "1000000ustake"
+          max_per_address_per_day: "10000000ustake"
+`
+	_, err := LoadChains(writeTemp(t, yml))
+	if err == nil {
+		t.Fatal("LoadChains: expected error for IBC-only destination used as source, got nil")
+	}
+	if !strings.Contains(err.Error(), "source_chain_id") {
+		t.Errorf("error %q: want it to mention source_chain_id", err.Error())
+	}
+}
+
+func TestIBCDrips_sourceOnlyChain(t *testing.T) {
+	// hub-1 is a standalone source-only chain: has endpoints for MsgTransfer, but no
+	// native drip and no ibc.drips of its own. mynet-1 references it as IBC source.
+	yml := `
+chains:
+  - chain_id: hub-1
+    standalone: true
+    enabled: true
+    bech32_prefix: cosmos
+    slip44: 118
+    endpoints:
+      grpc:
+        - localhost:9999
+    fee_tokens:
+      - denom: stake
+        average_gas_price: "0.025"
+  - chain_id: mynet-1
+    standalone: true
+    enabled: true
+    bech32_prefix: cosmos
+    slip44: 118
+    fee_tokens:
+      - denom: uosmo
+        average_gas_price: "0.025"
+    ibc:
+      drips:
+        - source_chain_id: hub-1
+          anonymous: "1000000stake"
+          max_per_address_per_day: "10000000stake"
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: unexpected error for source-only chain config: %v", err)
+	}
+	if len(cfg.Chains) != 2 {
+		t.Fatalf("got %d chains, want 2", len(cfg.Chains))
+	}
+}
+
+func TestIBCDrips_sourceOnlyRegistryChain(t *testing.T) {
+	// cosmoshub-4 is a registry source-only chain: no drip block, no ibc.drips.
+	// Endpoints come from the chain registry at runtime, not from the config file.
+	// mynet-1 references it as IBC source.
+	yml := `
+chains:
+  - chain_id: cosmoshub-4
+    enabled: true
+  - chain_id: mynet-1
     enabled: true
     drip:
       anonymous: "1000000uosmo"
       max_per_address_per_day: "10000000uosmo"
     ibc:
-      source_chain_id: chain-a-1
+      drips:
+        - source_chain_id: cosmoshub-4
+          anonymous: "1000000uatom"
+          max_per_address_per_day: "10000000uatom"
+`
+	cfg, err := LoadChains(writeTemp(t, yml))
+	if err != nil {
+		t.Fatalf("LoadChains: unexpected error for registry source-only chain config: %v", err)
+	}
+	if len(cfg.Chains) != 2 {
+		t.Fatalf("got %d chains, want 2", len(cfg.Chains))
+	}
+}
+
+func TestIBCDrips_selfReference(t *testing.T) {
+	yml := `
+chains:
+  - chain_id: chain-a-1
+    enabled: true
+    drip:
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
+    ibc:
+      drips:
+        - source_chain_id: chain-a-1
+          anonymous: "1000000uatom"
+          max_per_address_per_day: "10000000uatom"
 `
 	_, err := LoadChains(writeTemp(t, yml))
 	if err == nil {
-		t.Fatal("LoadChains: expected error for chained IBC sources, got nil")
+		t.Fatal("LoadChains: expected error for self-referencing source_chain_id, got nil")
 	}
 	if !strings.Contains(err.Error(), "source_chain_id") {
 		t.Errorf("error %q: want it to mention source_chain_id", err.Error())

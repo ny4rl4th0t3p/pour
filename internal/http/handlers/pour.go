@@ -44,6 +44,29 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Route IBC drip when a specific denom is requested, or when chain has no native drip.
+	if req.Denom != "" {
+		ibcDrip, ok := findIBCDrip(snap.IBCDrips, req.Denom)
+		if !ok {
+			pourRequestsTotal.WithLabelValues(req.ChainID, "denom_not_found").Inc()
+			writeError(w, http.StatusBadRequest, "no IBC drip configured for denom")
+			return
+		}
+		h.admitAndServeIBC(w, r, &req, snap, ibcDrip)
+		return
+	}
+
+	if snap.Drip.Anonymous == "" {
+		// IBC-only chain with no denom specified — check if exactly one IBC drip exists.
+		if len(snap.IBCDrips) == 1 {
+			h.admitAndServeIBC(w, r, &req, snap, snap.IBCDrips[0])
+			return
+		}
+		pourRequestsTotal.WithLabelValues(req.ChainID, "denom_required").Inc()
+		writeError(w, http.StatusBadRequest, "chain has no native drip; specify denom for IBC drip")
+		return
+	}
+
 	cc, err := buildChainContext(snap)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "pour: invalid drip config", "chain_id", req.ChainID, "error", err)
@@ -54,11 +77,6 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 	decision, err := h.gate.Admit(r.Context(), r, &req, cc)
 	if err != nil {
 		h.handleAdmitError(w, req.ChainID, err)
-		return
-	}
-
-	if snap.IBCSourceChainID != "" {
-		h.pourIBC(w, r, snap, req.Address, decision)
 		return
 	}
 
@@ -78,6 +96,40 @@ func (h *Handler) Pour(w http.ResponseWriter, r *http.Request) {
 	h.pourSync(w, r, req.ChainID, req.Address, coins, amount, ip, mechanism, now)
 }
 
+// admitAndServeIBC runs the abuse gate for an IBC drip and, if admitted, calls pourIBC.
+func (h *Handler) admitAndServeIBC(
+	w http.ResponseWriter,
+	r *http.Request,
+	req *pourapi.PourRequest,
+	snap chain.ChainSnapshot,
+	ibcDrip config.IBCDripConfig,
+) {
+	cc, err := buildChainContextIBC(snap, ibcDrip)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "pour: invalid IBC drip config", "chain_id", req.ChainID, "error", err)
+		writeError(w, http.StatusInternalServerError, "invalid drip config")
+		return
+	}
+	decision, err := h.gate.Admit(r.Context(), r, req, cc)
+	if err != nil {
+		h.handleAdmitError(w, req.ChainID, err)
+		return
+	}
+	h.pourIBC(w, r, snap, req.Address, decision, ibcDrip)
+}
+
+// findIBCDrip returns the IBCDripConfig whose anonymous coin's denom matches denom.
+func findIBCDrip(drips []config.IBCDripConfig, denom string) (config.IBCDripConfig, bool) {
+	for _, d := range drips {
+		coin, err := config.ParseCoin(d.Anonymous)
+		if err == nil && coin.Denom == denom {
+			return d, true
+		}
+	}
+	return config.IBCDripConfig{}, false
+}
+
+// buildChainContext constructs ChainContext for the native drip path.
 func buildChainContext(snap chain.ChainSnapshot) (abuse.ChainContext, error) {
 	anonCoin, err := config.ParseCoin(snap.Drip.Anonymous)
 	if err != nil {
@@ -98,6 +150,25 @@ func buildChainContext(snap chain.ChainSnapshot) (abuse.ChainContext, error) {
 		KeyAlgo:       string(snap.Info.KeyAlgo),
 		DripAnonymous: anonCoin,
 		DripSigned:    signedCoin,
+		MaxPerDay:     maxPerDay,
+	}, nil
+}
+
+// buildChainContextIBC constructs ChainContext for an IBC drip path.
+// Signed drip is not supported for IBC drips (no signed amount configured per-IBC-entry).
+func buildChainContextIBC(snap chain.ChainSnapshot, ibcDrip config.IBCDripConfig) (abuse.ChainContext, error) {
+	anonCoin, err := config.ParseCoin(ibcDrip.Anonymous)
+	if err != nil {
+		return abuse.ChainContext{}, fmt.Errorf("parse ibc drip anonymous: %w", err)
+	}
+	maxPerDay, err := config.ParseCoin(ibcDrip.MaxPerAddressPerDay)
+	if err != nil {
+		return abuse.ChainContext{}, fmt.Errorf("parse ibc drip max_per_address_per_day: %w", err)
+	}
+	return abuse.ChainContext{
+		ChainID:       snap.Info.ChainID,
+		KeyAlgo:       string(snap.Info.KeyAlgo),
+		DripAnonymous: anonCoin,
 		MaxPerDay:     maxPerDay,
 	}, nil
 }
@@ -275,6 +346,7 @@ func extractIP(remoteAddr string) string {
 func (h *Handler) pourIBC(
 	w http.ResponseWriter, r *http.Request,
 	destSnap chain.ChainSnapshot, address string, decision *abuse.Decision,
+	ibcDrip config.IBCDripConfig,
 ) {
 	chainID := destSnap.Info.ChainID
 	dripCoin := decision.DripCoin
@@ -282,7 +354,7 @@ func (h *Handler) pourIBC(
 	ip := extractIP(r.RemoteAddr)
 	now := time.Now().Unix()
 
-	srcSnap, ok := h.source.GetActive(destSnap.IBCSourceChainID)
+	srcSnap, ok := h.source.GetActive(ibcDrip.SourceChainID)
 	if !ok {
 		pourRequestsTotal.WithLabelValues(chainID, "ibc_no_source").Inc()
 		writeError(w, http.StatusServiceUnavailable, "source chain not active")
@@ -303,7 +375,9 @@ func (h *Handler) pourIBC(
 
 	channelID, portID, _, _ := ch.ChannelFor(srcSnap.Info.ChainName)
 
-	result, err := h.source.IBCTransfer(r.Context(), destSnap.IBCSourceChainID, tx.TransferRequest{
+	// post-v1: consider distributor fan-out for MsgTransfer if running multiple
+	// Hermes instances in parallel; single key is fine while the relayer is the bottleneck.
+	result, err := h.source.IBCTransfer(r.Context(), ibcDrip.SourceChainID, tx.TransferRequest{
 		KeyIndex:         0,
 		SourcePort:       portID,
 		SourceChannel:    channelID,

@@ -48,16 +48,42 @@ chains:
     # ibc:
     #   timeout: 10m     # MsgTransfer timeout; default 10m; increase for slow relayers
 
-  ## IBC destination chain — pour holds tokens on osmosis-1 and IBC-transfers to this chain.
-  ## No gRPC endpoints needed here; the source chain (osmosis-1) provides the wallet.
+  ## IBC drips — offer ATOM vouchers on osmosis-1 sourced from cosmoshub-4 via MsgTransfer.
+  ## Users request them with {"chain_id":"osmosis-1","address":"...","denom":"uatom"}.
+  ## The source chain (cosmoshub-4) must also be present in this config.
+  ## cosmoshub-4 can be configured with its own drip block (also serves as an ATOM faucet)
+  ## or as a source-only chain (no drip block; only broadcasts MsgTransfer for IBC drips).
+  ## Both native uosmo drips and IBC uatom voucher drips can be used simultaneously.
+  # ibc:
+  #   timeout: 10m
+  #   drips:
+  #     - source_chain_id: cosmoshub-4   # tokens are sent from cosmoshub-4 via MsgTransfer
+  #       anonymous: 1000000uatom
+  #       max_per_address_per_day: 10000000uatom
+
+  ## IBC-only destination chain — no gRPC endpoints or native wallet needed here.
+  ## Users receive uatom vouchers on this chain via MsgTransfer from cosmoshub-4.
+  # - chain_id: myibc-1
+  #   enabled: true
+  #   ibc:
+  #     timeout: 10m
+  #     drips:
+  #       - source_chain_id: cosmoshub-4
+  #         anonymous: 1000000uatom
+  #         max_per_address_per_day: 10000000uatom
+
+  ## IBC source-only chain — has a funded wallet and endpoints to broadcast MsgTransfer,
+  ## but does not serve native drips. Useful when you only want to offer IBC vouchers
+  ## to another chain without exposing a public ATOM faucet on cosmoshub-4 itself.
   # - chain_id: cosmoshub-4
   #   enabled: true
-  #   drip:
-  #     anonymous: 1000000uatom
-  #     max_per_address_per_day: 10000000uatom
-  #   ibc:
-  #     source_chain_id: osmosis-1  # tokens are sent from osmosis-1 via MsgTransfer
-  #     timeout: 10m
+  #   endpoints:
+  #     grpc:
+  #       - grpc.cosmos.network:443
+  #   fee_tokens:
+  #     - denom: uatom
+  #       average_gas_price: "0.025"
+  #   # No drip block — native drips disabled; only referenced as source_chain_id above.
 
   ## Standalone / local devnet chain — use with `pour serve --auto` or manually.
   ## standalone: true skips the chain registry; all fields must be set explicitly.

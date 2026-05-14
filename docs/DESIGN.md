@@ -311,6 +311,47 @@ absorbs routine changes immediately while requiring explicit human sign-off on b
   without operator review. Operators who need strict freeze coverage across restarts should pin the relevant fields in
   `chains.yml` using `pour admin chains pin`.
 
+### 11. IBC drips via MsgTransfer
+
+**Alternatives considered:**
+
+- Require a funded distributor wallet on every destination chain independently
+- Let the operator manage bridging themselves; the faucet only handles native drips
+- One `ibc.source_chain_id` per destination chain, making native and IBC drips mutually exclusive
+
+**Choice:** A chain can declare a list of IBC drip configurations under `ibc.drips`, each
+specifying a `source_chain_id`, a drip amount, and a per-address daily cap. Drips for a
+given denom are issued as `MsgTransfer` from the named source chain's faucet wallet, using
+an IBC channel discovered from the chain-registry IBC data or specified explicitly by the
+operator. A chain may simultaneously have a native drip (`drip.anonymous`) and one or more IBC
+drip entries; they are selected per-request via the optional `denom` field in `PourRequest`.
+
+**Rationale:** The primary use case is an operator who runs their own chain (network-1) and
+wants to offer users both native token drips (funded from their own wallet) and IBC voucher
+drips for tokens from a connected hub (funded from the hub's wallet, delivered via
+MsgTransfer → network-1 as `ibc/xxx` vouchers). These two flows are independent and must
+coexist. Making them mutually exclusive — the v0.6 model — forces the operator to choose,
+which eliminates the most useful topology. The per-denom list makes both paths declarative
+and simultaneously available without requiring a funded wallet on the destination side for
+the IBC path.
+
+**Consequences:**
+
+- The operator funds the source chain's faucet wallet for each IBC drip; no wallet is needed
+  on the destination chain for those tokens.
+- Native drip and IBC drips on the same chain are independent: native uses the destination
+  chain's own distributor wallets (`MsgSend`); IBC uses the source chain's faucet wallet
+  (`MsgTransfer`).
+- Packet delivery requires an active relayer between the two chains. The daemon broadcasts
+  `MsgTransfer` and records the drip as complete when the source-chain transaction confirms;
+  it does not observe relay acknowledgements or timeouts.
+- IBC channel discovery reads the chain-registry `_IBC/` directory. When the registry has
+  no entry for the source↔destination pair, the operator specifies the channel explicitly.
+- Per-address daily caps are tracked separately per denom (not aggregated), so native token
+  caps and IBC voucher caps do not interfere with each other.
+- The full packet lifecycle (acknowledgement, timeout detection, stuck-packet visibility) is
+  not in scope.
+
 ## Known limitations
 
 - **Freeze policy does not survive daemon restarts.** On the initial registry fetch after a restart, all fields —
