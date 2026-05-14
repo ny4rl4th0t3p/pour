@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ny4rl4th0t3p/pour/internal/config"
 	"github.com/ny4rl4th0t3p/pour/pkg/pourapi"
 )
 
@@ -21,6 +22,26 @@ func (h *Handler) Chains(w http.ResponseWriter, _ *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, pourapi.ChainsResponse{Chains: chains})
+}
+
+// ibcDripInfos converts IBCDripConfig slice to API response type.
+func ibcDripInfos(drips []config.IBCDripConfig) []pourapi.IBCDripInfo {
+	if len(drips) == 0 {
+		return nil
+	}
+	out := make([]pourapi.IBCDripInfo, 0, len(drips))
+	for _, d := range drips {
+		denom := ""
+		if coin, err := config.ParseCoin(d.Anonymous); err == nil {
+			denom = coin.Denom
+		}
+		out = append(out, pourapi.IBCDripInfo{
+			SourceChainID: d.SourceChainID,
+			Denom:         denom,
+			DripAmount:    d.Anonymous,
+		})
+	}
+	return out
 }
 
 // ChainDetail handles GET /v1/chains/{chain_id}.
@@ -49,6 +70,7 @@ func (h *Handler) ChainDetail(w http.ResponseWriter, r *http.Request) {
 			Preferred:     rawChannels[i].Preferred,
 		})
 	}
+	ibcDrips := ibcDripInfos(snap.IBCDrips)
 	writeJSON(w, http.StatusOK, pourapi.ChainDetailResponse{
 		ChainID:      snap.Info.ChainID,
 		ChainName:    snap.Info.ChainName,
@@ -57,5 +79,6 @@ func (h *Handler) ChainDetail(w http.ResponseWriter, r *http.Request) {
 		DripAmount:   snap.Drip.Anonymous,
 		LastChanged:  lastChanged,
 		IBCChannels:  ibcChannels,
+		IBCDrips:     ibcDrips,
 	})
 }
