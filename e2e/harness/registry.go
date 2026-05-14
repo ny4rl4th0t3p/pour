@@ -8,9 +8,9 @@ import (
 )
 
 // StartMockRegistry starts an httptest server that serves:
-//   - /simapp-a/chain.json  — real gRPC address from chainA
-//   - /simapp-b/chain.json  — real gRPC address from chainB, or a dead placeholder if chainB is nil
-//   - /_IBC/simapp-a-simapp-b.json — one synthetic ICS20 channel (channel-0 ↔ channel-0)
+//   - /hub/chain.json  — real gRPC address from chainA
+//   - /mynet/chain.json   — real gRPC address from chainB, or a dead placeholder if chainB is nil
+//   - /_IBC/hub-mynet.json — one synthetic ICS20 channel (channel-0 ↔ channel-0)
 //
 // Returns the server base URL.
 func StartMockRegistry(t *testing.T, chainA, chainB *SimappChain) string {
@@ -20,14 +20,14 @@ func StartMockRegistry(t *testing.T, chainA, chainB *SimappChain) string {
 	if chainB != nil {
 		chainBGRPC = chainB.GRPCAddr
 	}
-	chainAJSON := chainJSON("simapp-a", "simapp-a-1", "cosmos", "stake", chainA.GRPCAddr)
-	chainBJSON := chainJSON("simapp-b", "simapp-b-1", "cosmos", "uosmo", chainBGRPC)
-	ibcJSON := ibcFileJSON("simapp-a", "simapp-b")
+	chainAJSON := chainJSON("hub", "hub-1", "cosmos", "stake", chainA.GRPCAddr)
+	chainBJSON := chainJSON("mynet", "mynet-1", "cosmos", "uosmo", chainBGRPC)
+	ibcJSON := ibcFileJSON("hub", "mynet")
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/simapp-a/chain.json", serveJSON(chainAJSON))
-	mux.HandleFunc("/simapp-b/chain.json", serveJSON(chainBJSON))
-	mux.HandleFunc("/_IBC/simapp-a-simapp-b.json", serveJSON(ibcJSON))
+	mux.HandleFunc("/hub/chain.json", serveJSON(chainAJSON))
+	mux.HandleFunc("/mynet/chain.json", serveJSON(chainBJSON))
+	mux.HandleFunc("/_IBC/hub-mynet.json", serveJSON(ibcJSON))
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

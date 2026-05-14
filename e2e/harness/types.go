@@ -10,11 +10,19 @@ type IBCChannelInfo struct {
 	Preferred     bool   `json:"preferred"`
 }
 
+// IBCDripInfo mirrors pourapi.IBCDripInfo for black-box HTTP assertions.
+type IBCDripInfo struct {
+	SourceChainID string `json:"source_chain_id"`
+	Denom         string `json:"denom"`
+	DripAmount    string `json:"drip_amount"`
+}
+
 // ChainDetailResponse mirrors pourapi.ChainDetailResponse.
 type ChainDetailResponse struct {
 	ChainID     string           `json:"chain_id"`
 	ChainName   string           `json:"chain_name"`
 	IBCChannels []IBCChannelInfo `json:"ibc_channels"`
+	IBCDrips    []IBCDripInfo    `json:"ibc_drips,omitempty"`
 }
 
 // InfoResponse mirrors pourapi.InfoResponse (discovery fields only).

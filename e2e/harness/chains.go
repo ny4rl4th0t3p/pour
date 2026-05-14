@@ -35,10 +35,15 @@ type SimappConfig struct {
 }
 
 var (
-	SimappConfigA = SimappConfig{ChainID: "simapp-a-1", ChainName: "simapp-a", Denom: "stake", Prefix: "cosmos"}
+	// HubConfig is the IBC hub chain — holds tokens and fires MsgTransfer.
+	HubConfig = SimappConfig{ChainID: "hub-1", ChainName: "hub", Denom: "stake", Prefix: "cosmos"}
+	// MyNetConfig is the operator's destination chain — receives IBC vouchers.
 	// ibc-go-simd v8.5.2 (Cosmos SDK v0.50.x) always uses the "cosmos" bech32 prefix
 	// regardless of the chain's native gas denom. Both test chains share the same prefix.
-	SimappConfigB = SimappConfig{ChainID: "simapp-b-1", ChainName: "simapp-b", Denom: "uosmo", Prefix: "cosmos"}
+	MyNetConfig = SimappConfig{ChainID: "mynet-1", ChainName: "mynet", Denom: "uosmo", Prefix: "cosmos"}
+	// StandaloneConfig is the operator's chain in auto-mode tests — no IBC, stake denom
+	// kept so auto-mode drip assertions match without duplicating genesis complexity.
+	StandaloneConfig = SimappConfig{ChainID: "mynet-1", ChainName: "mynet", Denom: "stake", Prefix: "cosmos"}
 )
 
 // SimappChain holds the host-accessible endpoints of a running simapp container.

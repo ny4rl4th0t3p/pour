@@ -25,7 +25,8 @@ const TestRecipientAddr = "cosmos15yk64u7zc9g9k2yr2wmzeva5qgwxps6yxj00e7"
 
 // PourConfig parameterises a StartPour call.
 type PourConfig struct {
-	RegistryURL string
+	RegistryURL         string
+	DualDripDestination bool // if true, mynet-1 has both native drip and IBC drip
 }
 
 // PourServer holds the running pour process and its base URL.
@@ -41,45 +42,73 @@ func StartPour(t *testing.T, cfg PourConfig) *PourServer {
 
 	bin := resolveBin(t)
 	dir := t.TempDir()
-	writeChainsYML(t, dir, cfg.RegistryURL)
+	writeChainsYML(t, dir, cfg.RegistryURL, cfg.DualDripDestination)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", freePort(t))
+
 	cmd := exec.CommandContext(ctx, bin, "serve")
 	cmd.Env = append(os.Environ(),
 		"POUR_MNEMONIC="+TestMnemonic,
-		"POUR_LISTEN=127.0.0.1:18080",
+		"POUR_LISTEN="+listenAddr,
 		"POUR_CONFIG="+filepath.Join(dir, "chains.yml"),
 		"POUR_DB_PATH="+filepath.Join(dir, "pour.db"),
 		"POUR_LOG_LEVEL=debug",
 	)
-	cmd.Stdout = &testWriter{t: t, prefix: "[pour] "}
-	cmd.Stderr = &testWriter{t: t, prefix: "[pour] "}
+	cmd.Stdout = &testWriter{prefix: "[pour] "}
+	cmd.Stderr = &testWriter{prefix: "[pour] "}
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start pour: %v", err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
-	waitForHealth(t, "http://127.0.0.1:18080/health")
-	return &PourServer{BaseURL: "http://127.0.0.1:18080", cmd: cmd}
+	waitForHealth(t, "http://"+listenAddr+"/health")
+	return &PourServer{BaseURL: "http://" + listenAddr, cmd: cmd}
 }
 
-// Pour calls POST /v1/pour and decodes the response.
-func (s *PourServer) Pour(t *testing.T, chainID, address string) PourResponse {
+// doPour is the shared implementation for pour HTTP calls.
+func (s *PourServer) doPour(t *testing.T, chainID, address, denom string) (PourResponse, int) {
 	t.Helper()
-	body := fmt.Sprintf(`{"chain_id":%q,"address":%q}`, chainID, address)
+	var body string
+	if denom != "" {
+		body = fmt.Sprintf(`{"chain_id":%q,"address":%q,"denom":%q}`, chainID, address, denom)
+	} else {
+		body = fmt.Sprintf(`{"chain_id":%q,"address":%q}`, chainID, address)
+	}
 	resp, err := http.Post(s.BaseURL+"/v1/pour", "application/json", strings.NewReader(body)) //nolint:noctx
 	if err != nil {
 		t.Fatalf("POST /v1/pour: %v", err)
 	}
 	defer resp.Body.Close()
 	var out PourResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		t.Fatalf("decode pour response: %v", err)
-	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out, resp.StatusCode
+}
+
+// Pour calls POST /v1/pour without a denom (native drip path).
+func (s *PourServer) Pour(t *testing.T, chainID, address string) PourResponse {
+	t.Helper()
+	out, _ := s.doPour(t, chainID, address, "")
 	return out
+}
+
+// PourDenom calls POST /v1/pour with an explicit denom (IBC drip path).
+func (s *PourServer) PourDenom(t *testing.T, chainID, address, denom string) PourResponse {
+	t.Helper()
+	out, _ := s.doPour(t, chainID, address, denom)
+	return out
+}
+
+// PourExpectStatus calls POST /v1/pour and asserts the HTTP response status code.
+func (s *PourServer) PourExpectStatus(t *testing.T, chainID, address, denom string, wantStatus int) {
+	t.Helper()
+	_, got := s.doPour(t, chainID, address, denom)
+	if got != wantStatus {
+		t.Errorf("POST /v1/pour: got HTTP %d, want %d", got, wantStatus)
+	}
 }
 
 // GetChainDetail calls GET /v1/chains/{chainID} and decodes the response.
@@ -171,8 +200,8 @@ func StartPourAuto(t *testing.T, cfg PourAutoConfig) *PourServer {
 	if cfg.FundMnemonic != "" {
 		cmd.Env = append(cmd.Env, "POUR_FUND_MNEMONIC="+cfg.FundMnemonic)
 	}
-	cmd.Stdout = &testWriter{t: t, prefix: "[pour-auto] "}
-	cmd.Stderr = &testWriter{t: t, prefix: "[pour-auto] "}
+	cmd.Stdout = &testWriter{prefix: "[pour-auto] "}
+	cmd.Stderr = &testWriter{prefix: "[pour-auto] "}
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start pour (auto): %v", err)
@@ -217,32 +246,49 @@ func resolveBin(t *testing.T) string {
 	return ""
 }
 
-// writeChainsYML writes a minimal chains.yml with both simapp chains.
-// Both chain IDs must be present so pour computes the simapp-a/simapp-b pair
+// writeChainsYML writes a minimal chains.yml with both test chains.
+// Both chain IDs must be present so pour computes the hub/mynet pair
 // and fetches the _IBC/ file from the mock registry.
-func writeChainsYML(t *testing.T, dir, registryURL string) {
+// When cfg.DualDripDestination is true, mynet-1 is configured with both a
+// native drip (MsgSend) and an IBC drip (MsgTransfer from hub-1). When
+// false, mynet-1 is IBC-only — all drips flow from hub-1.
+func writeChainsYML(t *testing.T, dir, registryURL string, dualDrip bool) {
 	t.Helper()
+
+	var chainBBlock string
+	if dualDrip {
+		chainBBlock = `  - chain_id: mynet-1
+    enabled: true
+    batch_window: "0s"
+    drip:
+      anonymous: "1000000stake"
+      max_per_address_per_day: "10000000stake"
+    ibc:
+      timeout: "30s"
+      drips:
+        - source_chain_id: hub-1
+          anonymous: "1000000stake"
+          max_per_address_per_day: "10000000stake"`
+	} else {
+		chainBBlock = `  - chain_id: mynet-1
+    enabled: true
+    ibc:
+      timeout: "30s"
+      drips:
+        - source_chain_id: hub-1
+          anonymous: "1000000stake"
+          max_per_address_per_day: "10000000stake"`
+	}
+
 	content := fmt.Sprintf(`registry:
   base_url: %q
   refresh_interval: "1h"
 
 chains:
-  - chain_id: simapp-a-1
+  - chain_id: hub-1
     enabled: true
-    drip:
-      anonymous: "1000000stake"
-      max_per_address_per_day: "10000000stake"
-    ibc:
-      timeout: "30s"
-  - chain_id: simapp-b-1
-    enabled: true
-    drip:
-      anonymous: "1000000stake"
-      max_per_address_per_day: "10000000stake"
-    ibc:
-      source_chain_id: simapp-a-1
-      timeout: "30s"
-`, registryURL)
+%s
+`, registryURL, chainBBlock)
 	if err := os.WriteFile(filepath.Join(dir, "chains.yml"), []byte(content), 0600); err != nil {
 		t.Fatalf("write chains.yml: %v", err)
 	}
@@ -265,11 +311,11 @@ func waitForHealth(t *testing.T, url string) {
 }
 
 type testWriter struct {
-	t      *testing.T
 	prefix string
 }
 
 func (w *testWriter) Write(p []byte) (int, error) {
-	w.t.Log(w.prefix + strings.TrimRight(string(p), "\n"))
+	line := strings.TrimRight(string(p), "\n")
+	_, _ = fmt.Fprintf(os.Stderr, "%s%s\n", w.prefix, line)
 	return len(p), nil
 }
