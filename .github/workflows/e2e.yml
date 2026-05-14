@@ -50,7 +50,7 @@ jobs:
           version: v2.11.4
           working-directory: e2e
 
-      - run: go test -v -timeout 15m -run "TestAutoMode" ./...
+      - run: make test-auto
         working-directory: e2e
         env:
           POUR_BIN: ${{ github.workspace }}/pour
@@ -80,7 +80,7 @@ jobs:
       - run: make proto-gen
       - run: make build
 
-      - run: go test -v -timeout 20m -run "TestIBC" ./...
+      - run: make test-discovery test-ibc
         working-directory: e2e
         env:
           POUR_BIN: ${{ github.workspace }}/pour

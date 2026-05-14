@@ -90,7 +90,7 @@ See [Configuration](https://ny4rl4th0t3p.github.io/pour/configuration) and
 Runs against real Docker containers (ibc-go-simd chains + Hermes relayer):
 
 ```sh
-make build && cd e2e && POUR_BIN=../pour go test -v -timeout 20m ./...
+make build && cd e2e && make test
 ```
 
 ## Roadmap
