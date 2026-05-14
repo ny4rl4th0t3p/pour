@@ -106,7 +106,7 @@ make build && cd e2e && make test
 - [x] **v0.8.1** — documentation site launch, refill bug fixes
 - [x] **v0.8.2** — OpenAPI spec accuracy, admin CLI completeness (`chains status`, `api-keys` create flags + list
   fields)
-- [ ] **v0.9.0** — per-coin IBC routing: source-only chains, multi-denom IBC drip configs
+- [x] **v0.9.0** — per-coin IBC routing: source-only chains, multi-denom IBC drip configs
 - [ ] **v1.0.0** — stable: API and config schema frozen under semver guarantees
 
 ## License
