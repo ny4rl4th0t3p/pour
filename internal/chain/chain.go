@@ -268,7 +268,7 @@ func (c *Chain) Start(ctx context.Context) {
 	if c.endpointPool != nil {
 		startProbeLoop(ctx, c.endpointPool, c.log)
 	}
-	if c.client != nil {
+	if c.refillInterval > 0 {
 		go c.RefillLoop(ctx)
 	}
 }
