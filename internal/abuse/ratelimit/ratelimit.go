@@ -112,7 +112,8 @@ func (l *Limiter) CheckAddress(
 	if err != nil {
 		return fmt.Errorf("ratelimit: decode address: %w", err)
 	}
-	scopeValue := keyAlgo + ":" + hex.EncodeToString(rawBytes)
+	// Include denom so caps for different tokens on the same chain are tracked separately.
+	scopeValue := keyAlgo + ":" + hex.EncodeToString(rawBytes) + ":" + dripCoin.Denom
 
 	dripAmt, ok := new(big.Int).SetString(dripCoin.Amount, 10)
 	if !ok {
