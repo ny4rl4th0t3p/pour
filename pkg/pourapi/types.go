@@ -23,9 +23,12 @@ type SigCredential struct {
 }
 
 // PourRequest is the body for POST /v1/pour.
+// Denom selects which configured token to drip. When empty, the chain's native drip is
+// used. Set to a denom string (e.g. "uatom") to request an IBC drip for that token.
 type PourRequest struct {
 	ChainID   string         `json:"chain_id"`
 	Address   string         `json:"address"`
+	Denom     string         `json:"denom,omitempty"`
 	Pow       *PowCredential `json:"pow,omitempty"`
 	Signature *SigCredential `json:"signature,omitempty"`
 }
@@ -90,6 +93,13 @@ type IBCChannelInfo struct {
 	Preferred     bool   `json:"preferred"`
 }
 
+// IBCDripInfo describes one IBC drip configuration available on a chain.
+type IBCDripInfo struct {
+	SourceChainID string `json:"source_chain_id"`
+	Denom         string `json:"denom"`       // the token denom (e.g. "uatom")
+	DripAmount    string `json:"drip_amount"` // e.g. "1000000uatom"
+}
+
 // ChainDetailResponse is returned by GET /v1/chains/{chain_id}.
 type ChainDetailResponse struct {
 	ChainID      string           `json:"chain_id"`
@@ -99,6 +109,7 @@ type ChainDetailResponse struct {
 	DripAmount   string           `json:"drip_amount"`
 	LastChanged  string           `json:"last_changed"` // RFC3339; empty if never updated
 	IBCChannels  []IBCChannelInfo `json:"ibc_channels"`
+	IBCDrips     []IBCDripInfo    `json:"ibc_drips,omitempty"`
 }
 
 // HealthResponse is returned by GET /health.
