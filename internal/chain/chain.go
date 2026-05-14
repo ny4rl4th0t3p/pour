@@ -36,9 +36,8 @@ type Chain struct {
 	refillThreshold  tx.Coin
 	refillInterval   time.Duration
 	ibcTimeout       time.Duration
+	ibcDrips         []config.IBCDripConfig
 	log              *slog.Logger
-
-	ibcSourceChainID string
 
 	multiSendDisabled   atomic.Bool
 	suspended           atomic.Bool
@@ -61,22 +60,21 @@ func newChain(
 	cfg config.ChainConfig,
 	log *slog.Logger,
 ) (*Chain, error) {
-	if cfg.IBC.SourceChainID != "" {
-		ibcTimeout, _ := time.ParseDuration(cfg.IBC.Timeout) // already validated
-		log.Debug("chain is IBC-destination, no tx client created", "chain_id", info.ChainID)
-		return &Chain{
-			info:             info,
-			drip:             drip,
-			ibcTimeout:       ibcTimeout,
-			ibcSourceChainID: cfg.IBC.SourceChainID,
-			log:              log,
-		}, nil
-	}
+	ibcTimeout, _ := time.ParseDuration(cfg.IBC.Timeout) // already validated
 
-	n := cfg.DistributorCount()
-	keyIndices := make([]uint32, n+1)
-	for i := range keyIndices {
-		keyIndices[i] = uint32(i) // 0=holder, 1..N=distributors
+	hasEndpoints := len(info.Endpoints.GRPC) > 0 || len(info.Endpoints.REST) > 0
+
+	// IBC-only destination: no endpoints means no tx client is possible.
+	// All drips arrive via MsgTransfer from the source chain's wallet.
+	if drip.Anonymous == "" && !hasEndpoints {
+		log.Debug("chain is IBC-only destination, no tx client created", "chain_id", info.ChainID)
+		return &Chain{
+			info:       info,
+			drip:       drip,
+			ibcTimeout: ibcTimeout,
+			ibcDrips:   cfg.IBC.Drips,
+			log:        log,
+		}, nil
 	}
 
 	var epPool *tx.EndpointPool
@@ -88,9 +86,34 @@ func newChain(
 		epPool = tx.NewEndpointPool(grpcURLs)
 	}
 
+	// Source-only chains (endpoints but no native drip) only need the holder key (index 0)
+	// for MsgTransfer. Native drip chains also derive distributor keys 1..N.
+	n := 0
+	if drip.Anonymous != "" {
+		n = cfg.DistributorCount()
+	}
+	keyIndices := make([]uint32, n+1)
+	for i := range keyIndices {
+		keyIndices[i] = uint32(i) // 0=holder, 1..N=distributors
+	}
+
 	client, err := tx.New(info, mnemonic, keyIndices, tx.Options{GasCache: gc, EndpointPool: epPool})
 	if err != nil {
 		return nil, err
+	}
+
+	// Source-only chain: has tx client for MsgTransfer but no native drip infrastructure.
+	if drip.Anonymous == "" {
+		log.Debug("chain is IBC source-only, no native drip", "chain_id", info.ChainID)
+		return &Chain{
+			info:         info,
+			drip:         drip,
+			client:       client,
+			endpointPool: epPool,
+			ibcTimeout:   ibcTimeout,
+			ibcDrips:     cfg.IBC.Drips,
+			log:          log,
+		}, nil
 	}
 
 	batchDur, err := cfg.BatchWindowDuration()
@@ -124,8 +147,6 @@ func newChain(
 		return nil, err
 	}
 
-	ibcTimeout, _ := time.ParseDuration(cfg.IBC.Timeout) // already validated; error impossible
-
 	c := &Chain{
 		info:             info,
 		drip:             drip,
@@ -136,6 +157,7 @@ func newChain(
 		refillThreshold:  refillThreshold,
 		refillInterval:   refillInterval,
 		ibcTimeout:       ibcTimeout,
+		ibcDrips:         cfg.IBC.Drips,
 		log:              log,
 	}
 
@@ -200,8 +222,9 @@ func (c *Chain) Drip() chainregistry.DripPolicy { return c.drip }
 // IBCTimeout returns the configured MsgTransfer timeout duration for this chain.
 func (c *Chain) IBCTimeout() time.Duration { return c.ibcTimeout }
 
-// IBCSourceChainID returns the source chain ID for IBC-destination chains, or empty string.
-func (c *Chain) IBCSourceChainID() string { return c.ibcSourceChainID }
+// IBCDrips returns the list of IBC drip configurations for this chain.
+// Each entry defines a token transferred from a source chain via MsgTransfer.
+func (c *Chain) IBCDrips() []config.IBCDripConfig { return c.ibcDrips }
 
 // Client returns the underlying *tx.Client. Returns nil for test chains backed by stubs.
 func (c *Chain) Client() *tx.Client {
@@ -221,9 +244,6 @@ func (c *Chain) Close() {
 // Pour routes req to the distributor pool. Returns ErrChainSuspended or ErrSyncMode
 // when the chain cannot accept the request.
 func (c *Chain) Pour(_ context.Context, req batch.Request) error {
-	if c.ibcSourceChainID != "" {
-		return ErrIBCDestination
-	}
 	if c.suspended.Load() {
 		return ErrChainSuspended
 	}
@@ -248,7 +268,7 @@ func (c *Chain) Start(ctx context.Context) {
 	if c.endpointPool != nil {
 		startProbeLoop(ctx, c.endpointPool, c.log)
 	}
-	if c.ibcSourceChainID == "" {
+	if c.client != nil {
 		go c.RefillLoop(ctx)
 	}
 }

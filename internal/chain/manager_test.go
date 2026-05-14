@@ -35,8 +35,9 @@ func enabledPtr(v bool) *bool    { return &v }
 func strPtr(s string) *string    { return &s }
 func uint32Ptr(v uint32) *uint32 { return &v }
 
-// ibcDestChainCfg builds a minimal standalone IBC-destination ChainConfig for tests.
-// IBC-destination chains have no gRPC endpoints; the source chain handles broadcasting.
+// ibcDestChainCfg builds a minimal standalone IBC-only destination ChainConfig for tests.
+// No drip.anonymous — all drips arrive via MsgTransfer from the source chain, so no tx
+// client is created on the destination side (client == nil).
 func ibcDestChainCfg(chainID, sourceChainID string) config.ChainConfig {
 	return config.ChainConfig{
 		ChainID:      chainID,
@@ -45,13 +46,13 @@ func ibcDestChainCfg(chainID, sourceChainID string) config.ChainConfig {
 		Bech32Prefix: strPtr("dest"),
 		Slip44:       uint32Ptr(118),
 		FeeTokens:    []config.FeeTokenConfig{{Denom: "udest"}},
-		Drip: config.DripConfig{
-			Anonymous:           "1000000udest",
-			MaxPerAddressPerDay: "50000000udest",
-		},
 		IBC: config.IBCConfig{
-			SourceChainID: sourceChainID,
-			Timeout:       "10m",
+			Timeout: "10m",
+			Drips: []config.IBCDripConfig{{
+				SourceChainID:       sourceChainID,
+				Anonymous:           "1000000udest",
+				MaxPerAddressPerDay: "50000000udest",
+			}},
 		},
 	}
 }
@@ -545,5 +546,67 @@ func TestManager_IBCTransfer_routesToSource(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "not active") || strings.Contains(err.Error(), "no tx client") {
 		t.Errorf("error %q: routing did not reach the tx client (manager guard hit instead)", err.Error())
+	}
+}
+
+// sourceOnlyChainCfg builds a standalone chain with endpoints but no native drip
+// and no ibc.drips — an IBC source-only chain that can broadcast MsgTransfer but
+// does not itself serve pour requests.
+func sourceOnlyChainCfg(chainID string) config.ChainConfig {
+	return config.ChainConfig{
+		ChainID:      chainID,
+		Standalone:   true,
+		Enabled:      enabledPtr(true),
+		Bech32Prefix: strPtr("cosmos"),
+		Slip44:       uint32Ptr(118),
+		Endpoints:    &config.EndpointsConfig{GRPC: []string{"localhost:9999"}},
+		FeeTokens:    []config.FeeTokenConfig{{Denom: "ustake"}},
+	}
+}
+
+func TestManager_sourceOnlyChain_hasTxClient(t *testing.T) {
+	// Source-only chain has endpoints but no native drip. It must get a tx client
+	// so it can broadcast MsgTransfer for another chain's IBC drips.
+	cfg := &config.ChainsConfig{
+		Chains: []config.ChainConfig{
+			sourceOnlyChainCfg("hub-1"),
+		},
+	}
+	m, err := New(context.Background(), Options{
+		Config:     cfg,
+		GasCache:   newTestGasCache(t),
+		MnemonicFn: func() string { return testMnemonic },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(m.Close)
+
+	c, ok := m.GetChain("hub-1")
+	if !ok {
+		t.Fatal("GetChain hub-1: not active")
+	}
+	if c.Client() == nil {
+		t.Error("source-only chain: Client() is nil; expected a tx client for MsgTransfer")
+	}
+	if c.pool != nil {
+		t.Error("source-only chain: pool is non-nil; expected no batch pool")
+	}
+	// IBCTransfer must reach the tx client (connection error, not a guard error).
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err = m.IBCTransfer(ctx, "hub-1", tx.TransferRequest{
+		KeyIndex:         0,
+		SourcePort:       "transfer",
+		SourceChannel:    "channel-0",
+		Token:            tx.Coin{Denom: "ustake", Amount: "1000000"},
+		ReceiverAddress:  "cosmos1test",
+		TimeoutTimestamp: 1,
+	})
+	if err == nil {
+		t.Fatal("expected connection error, got nil")
+	}
+	if strings.Contains(err.Error(), "no tx client") {
+		t.Errorf("error %q: IBCTransfer hit the 'no tx client' guard instead of the tx client", err.Error())
 	}
 }
